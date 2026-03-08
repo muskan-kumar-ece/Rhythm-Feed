@@ -103,3 +103,51 @@ export const dummyAnalytics = {
     { title: "Neon Dreams", plays: 120000, date: "1 week ago" }
   ]
 };
+
+export type Moment = {
+  id: string;
+  user: { name: string; avatarUrl: string };
+  song: Song;
+  lyricLine: string;
+  mood: string;
+  caption: string;
+  likes: number;
+  comments: number;
+  timestamp: string;
+};
+
+export const dummyMoments: Moment[] = [
+  {
+    id: "m1",
+    user: { name: "Alex Vibes", avatarUrl: "https://i.pravatar.cc/150?u=alex" },
+    song: dummySongs[2], // Heavy Thoughts
+    lyricLine: "Shadows dancing on the wall",
+    mood: "Sad",
+    caption: "Exactly how I feel tonight. This track hits different when it's raining outside. 🌧️",
+    likes: 452,
+    comments: 24,
+    timestamp: "2 hours ago"
+  },
+  {
+    id: "m2",
+    user: { name: "Sarah Code", avatarUrl: "https://i.pravatar.cc/150?u=sarah" },
+    song: dummySongs[1], // Late Night Studies
+    lyricLine: "Coffee cold but mind awake",
+    mood: "Focus",
+    caption: "Grinding through this codebase at 3 AM. ChillHop always pulls me through. ☕💻",
+    likes: 1205,
+    comments: 89,
+    timestamp: "5 hours ago"
+  },
+  {
+    id: "m3",
+    user: { name: "Jake Fitness", avatarUrl: "https://i.pravatar.cc/150?u=jake" },
+    song: dummySongs[3], // IRON WILL
+    lyricLine: "No excuses, gotta get in it",
+    mood: "Gym",
+    caption: "PR day! Let's goooo! 💪🔥",
+    likes: 3400,
+    comments: 112,
+    timestamp: "1 day ago"
+  }
+];

@@ -1,4 +1,4 @@
-import { Home, Compass, PlusSquare, BarChart2, User } from "lucide-react";
+import { Home, MessageSquareQuote, PlusSquare, BarChart2, User } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 
@@ -7,7 +7,7 @@ export default function Navigation() {
 
   const navItems = [
     { icon: Home, label: "Feed", href: "/" },
-    { icon: Compass, label: "Discover", href: "/discover" },
+    { icon: MessageSquareQuote, label: "Moments", href: "/moments" },
     { icon: PlusSquare, label: "Upload", href: "/artist/upload" },
     { icon: BarChart2, label: "Analytics", href: "/artist/dashboard" },
     { icon: User, label: "Profile", href: "/profile" },

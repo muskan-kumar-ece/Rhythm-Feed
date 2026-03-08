@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2 } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote } from "lucide-react";
 import { Song } from "@/lib/dummyData";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
@@ -15,6 +15,9 @@ export default function SongCard({ song, isActive }: SongCardProps) {
   const [isSaved, setIsSaved] = useState(false);
   const [isFollowing, setIsFollowing] = useState(song.isFollowingArtist);
   const [currentLyricIndex, setCurrentLyricIndex] = useState(0);
+  
+  // Share to moment state
+  const [showShareModal, setShowShareModal] = useState(false);
   
   const progressRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
@@ -58,6 +61,7 @@ export default function SongCard({ song, isActive }: SongCardProps) {
       setReplays(0);
     } else {
       setIsPlaying(false);
+      setShowShareModal(false);
       
       // Finalize tracking when card becomes inactive
       if (listenStartTime) {
@@ -90,8 +94,15 @@ export default function SongCard({ song, isActive }: SongCardProps) {
   }, [isActive]);
 
   const togglePlay = (e: React.MouseEvent) => {
+    if (showShareModal) return;
     e.stopPropagation();
     setIsPlaying(!isPlaying);
+  };
+
+  const handleShareClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowShareModal(true);
+    setIsPlaying(false); // Pause while sharing
   };
 
   return (
@@ -112,7 +123,8 @@ export default function SongCard({ song, isActive }: SongCardProps) {
         {/* Play/Pause Indicator (Fades out) */}
         <div className={cn(
           "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/40 backdrop-blur-md rounded-full p-6 transition-all duration-300",
-          isPlaying ? "opacity-0 scale-150 pointer-events-none" : "opacity-100 scale-100"
+          isPlaying ? "opacity-0 scale-150 pointer-events-none" : "opacity-100 scale-100",
+          showShareModal && "hidden"
         )}>
           <Play fill="white" size={48} className="ml-2 text-white" />
         </div>
@@ -210,11 +222,14 @@ export default function SongCard({ song, isActive }: SongCardProps) {
               <span className="text-xs font-medium text-white/80">{song.saves}</span>
             </button>
 
-            <button className="flex flex-col items-center gap-1 group/btn" onClick={(e) => e.stopPropagation()}>
-              <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
-                <Share2 size={26} className="text-white" />
+            <button 
+              onClick={handleShareClick}
+              className="flex flex-col items-center gap-1 group/btn"
+            >
+              <div className="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md flex items-center justify-center border border-primary/50 group-hover/btn:bg-primary/40 transition-colors">
+                <Quote size={24} className="text-primary-foreground" />
               </div>
-              <span className="text-xs font-medium text-white/80">Share</span>
+              <span className="text-xs font-medium text-primary">Moment</span>
             </button>
 
             {/* Rotating Record */}
@@ -244,6 +259,62 @@ export default function SongCard({ song, isActive }: SongCardProps) {
           <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
       </div>
+
+      {/* Share to Moment Modal Overlay */}
+      {showShareModal && (
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-300 pb-16">
+          <div className="bg-background border-t border-white/10 rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-1/2 duration-300">
+            <h3 className="text-2xl font-display font-bold text-white mb-2">Create a Moment</h3>
+            <p className="text-sm text-white/50 mb-6">Share this song with the current lyric and mood.</p>
+            
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-medium bg-primary/20 text-primary px-2 py-1 rounded">{song.mood}</span>
+              </div>
+              <p className="font-display text-xl font-bold text-white text-center italic mb-4">
+                "{song.lyrics[currentLyricIndex]?.text || song.lyrics[0].text}"
+              </p>
+              <div className="flex items-center gap-3 pt-4 border-t border-white/10">
+                 <div className="w-8 h-8 rounded bg-white/10 overflow-hidden">
+                    <img src={song.coverUrl} alt="cover" className="w-full h-full object-cover" />
+                 </div>
+                 <div>
+                   <p className="text-xs font-semibold text-white">{song.title}</p>
+                   <p className="text-[10px] text-white/50">{song.artist}</p>
+                 </div>
+              </div>
+            </div>
+
+            <textarea 
+              placeholder="Add a caption..."
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary mb-6 resize-none h-24"
+            />
+
+            <div className="flex gap-4">
+              <button 
+                onClick={() => {
+                  setShowShareModal(false);
+                  setIsPlaying(true);
+                }}
+                className="flex-1 py-3 rounded-full border border-white/20 text-white font-medium text-sm hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  // In a real app, this would dispatch to the Moments feed
+                  setShowShareModal(false);
+                  setIsPlaying(true);
+                  // Optional: Show a toast notification here
+                }}
+                className="flex-1 py-3 rounded-full bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90"
+              >
+                Post Moment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

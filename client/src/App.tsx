@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Feed from "@/pages/Feed";
 import ArtistPortal from "@/pages/ArtistPortal";
+import Moments from "@/pages/Moments";
 import Navigation from "@/components/Navigation";
 
 function Router() {
@@ -15,11 +16,9 @@ function Router() {
         <Switch>
           <Route path="/" component={Feed} />
           <Route path="/artist/:tab?" component={ArtistPortal} />
+          <Route path="/moments" component={Moments} />
           
           {/* Fallback mock routes */}
-          <Route path="/discover">
-            <div className="p-8 pt-20 text-center"><h2 className="text-2xl font-display font-bold">Discover</h2><p className="text-muted-foreground mt-2">Find your next obsession.</p></div>
-          </Route>
           <Route path="/profile">
             <div className="p-8 pt-20 text-center"><h2 className="text-2xl font-display font-bold">Profile</h2><p className="text-muted-foreground mt-2">Your saved sounds.</p></div>
           </Route>
