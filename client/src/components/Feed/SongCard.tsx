@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2 } from "lucide-react";
 import { Song } from "@/lib/dummyData";
 import { cn } from "@/lib/utils";
+import { trackListenBehavior } from "@/lib/tracking";
 
 interface SongCardProps {
   song: Song;
@@ -18,6 +19,10 @@ export default function SongCard({ song, isActive }: SongCardProps) {
   const progressRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
 
+  // Tracking state
+  const [listenStartTime, setListenStartTime] = useState<number | null>(null);
+  const [replays, setReplays] = useState(0);
+
   // Mock playback
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -25,6 +30,7 @@ export default function SongCard({ song, isActive }: SongCardProps) {
       interval = setInterval(() => {
         setProgress(p => {
           if (p >= 100) {
+            setReplays(r => r + 1);
             return 0; // Loop mockup
           }
           return p + 0.5;
@@ -43,13 +49,43 @@ export default function SongCard({ song, isActive }: SongCardProps) {
     }
   }, [progress, isActive, isPlaying, song.lyrics.length]);
 
-  // Auto-play when active
+  // Auto-play and Tracking when active
   useEffect(() => {
     if (isActive) {
       setIsPlaying(true);
       setProgress(0);
+      setListenStartTime(Date.now());
+      setReplays(0);
     } else {
       setIsPlaying(false);
+      
+      // Finalize tracking when card becomes inactive
+      if (listenStartTime) {
+        const durationMs = Date.now() - listenStartTime;
+        const durationSec = durationMs / 1000;
+        
+        // Consider it a skip if listened for less than 5 seconds and no replays
+        const isSkip = durationSec < 5 && replays === 0;
+        
+        const hour = new Date().getHours();
+        let timeOfDay = "Night";
+        if (hour >= 5 && hour < 12) timeOfDay = "Morning";
+        else if (hour >= 12 && hour < 17) timeOfDay = "Afternoon";
+        else if (hour >= 17 && hour < 21) timeOfDay = "Evening";
+
+        trackListenBehavior({
+          songId: song.id,
+          songTitle: song.title,
+          durationSeconds: parseFloat(durationSec.toFixed(1)),
+          skipped: isSkip,
+          replays,
+          liked: isLiked,
+          timestamp: new Date().toISOString(),
+          timeOfDay
+        });
+
+        setListenStartTime(null);
+      }
     }
   }, [isActive]);
 
