@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw } from "lucide-react";
 import { Song } from "@/lib/dummyData";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
@@ -7,9 +7,10 @@ import { trackListenBehavior } from "@/lib/tracking";
 interface SongCardProps {
   song: Song;
   isActive: boolean;
+  shouldPreload?: boolean;
 }
 
-export default function SongCard({ song, isActive }: SongCardProps) {
+export default function SongCard({ song, isActive, shouldPreload = false }: SongCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -19,24 +20,25 @@ export default function SongCard({ song, isActive }: SongCardProps) {
   // Audio state
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
-  // Initialize audio when url is provided
+  // Initialize audio when url is provided or when preloading
   useEffect(() => {
-    if (song.audioUrl) {
+    if (song.audioUrl && (isActive || shouldPreload)) {
       if (!audioRef.current) {
         audioRef.current = new Audio(song.audioUrl);
-        audioRef.current.loop = true;
+        audioRef.current.preload = "auto";
+        audioRef.current.loop = false; // We handle loop manually for replay tracking
       } else if (audioRef.current.src !== song.audioUrl) {
         audioRef.current.src = song.audioUrl;
       }
     }
     
     return () => {
-      if (audioRef.current) {
+      if (audioRef.current && !isActive && !shouldPreload) {
         audioRef.current.pause();
         audioRef.current = null;
       }
     };
-  }, [song.audioUrl]);
+  }, [song.audioUrl, isActive, shouldPreload]);
   
   // Share to moment state
   const [showShareModal, setShowShareModal] = useState(false);
@@ -63,6 +65,13 @@ export default function SongCard({ song, isActive }: SongCardProps) {
             const duration = audioRef.current.duration || 1; // prevent div by zero
             
             setProgress((currentTime / duration) * 100);
+            
+            if (currentTime >= duration && duration > 1) {
+              // Handle loop / replay
+              setReplays(r => r + 1);
+              audioRef.current.currentTime = 0;
+              audioRef.current.play().catch(e => console.error(e));
+            }
             
             // Sync lyrics based on real time
             const lyricIndex = song.lyrics.findIndex((lyric, idx) => {
@@ -160,6 +169,16 @@ export default function SongCard({ song, isActive }: SongCardProps) {
     setIsPlaying(false); // Pause while sharing
   };
 
+  const restartSong = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(console.error);
+    }
+    setProgress(0);
+    setIsPlaying(true);
+  };
+
   return (
     <div className="relative w-full h-[100dvh] snap-start snap-always bg-black overflow-hidden flex flex-col group">
       {/* Background Cover with Blur */}
@@ -220,9 +239,18 @@ export default function SongCard({ song, isActive }: SongCardProps) {
 
             {/* Song Info */}
             <div className="space-y-2">
-              <h2 className="text-3xl font-display font-bold text-white drop-shadow-lg leading-tight">
-                {song.title}
-              </h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-3xl font-display font-bold text-white drop-shadow-lg leading-tight">
+                  {song.title}
+                </h2>
+                <button 
+                  onClick={restartSong}
+                  className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors backdrop-blur-md opacity-0 group-hover:opacity-100"
+                  aria-label="Replay song"
+                >
+                  <RotateCcw size={18} className="text-white" />
+                </button>
+              </div>
               
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/20">

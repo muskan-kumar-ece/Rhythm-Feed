@@ -33,6 +33,7 @@ export default function Feed() {
           key={song.id} 
           song={song} 
           isActive={index === activeIndex} 
+          shouldPreload={index === activeIndex + 1}
         />
       ))}
       
