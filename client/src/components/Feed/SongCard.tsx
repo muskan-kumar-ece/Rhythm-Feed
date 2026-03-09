@@ -16,6 +16,28 @@ export default function SongCard({ song, isActive }: SongCardProps) {
   const [isFollowing, setIsFollowing] = useState(song.isFollowingArtist);
   const [currentLyricIndex, setCurrentLyricIndex] = useState(0);
   
+  // Audio state
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Initialize audio when url is provided
+  useEffect(() => {
+    if (song.audioUrl) {
+      if (!audioRef.current) {
+        audioRef.current = new Audio(song.audioUrl);
+        audioRef.current.loop = true;
+      } else if (audioRef.current.src !== song.audioUrl) {
+        audioRef.current.src = song.audioUrl;
+      }
+    }
+    
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, [song.audioUrl]);
+  
   // Share to moment state
   const [showShareModal, setShowShareModal] = useState(false);
   
@@ -26,29 +48,59 @@ export default function SongCard({ song, isActive }: SongCardProps) {
   const [listenStartTime, setListenStartTime] = useState<number | null>(null);
   const [replays, setReplays] = useState(0);
 
-  // Mock playback
+  // Mock playback logic
   useEffect(() => {
     let interval: NodeJS.Timeout;
+    
     if (isActive && isPlaying) {
-      interval = setInterval(() => {
-        setProgress(p => {
-          if (p >= 100) {
-            setReplays(r => r + 1);
-            return 0; // Loop mockup
+      if (audioRef.current) {
+        audioRef.current.play().catch(e => console.error("Audio playback failed:", e));
+        
+        // Update progress and lyrics based on real audio time
+        interval = setInterval(() => {
+          if (audioRef.current) {
+            const currentTime = audioRef.current.currentTime;
+            const duration = audioRef.current.duration || 1; // prevent div by zero
+            
+            setProgress((currentTime / duration) * 100);
+            
+            // Sync lyrics based on real time
+            const lyricIndex = song.lyrics.findIndex((lyric, idx) => {
+              const nextLyric = song.lyrics[idx + 1];
+              return currentTime >= lyric.time && (!nextLyric || currentTime < nextLyric.time);
+            });
+            
+            if (lyricIndex !== -1) {
+              setCurrentLyricIndex(lyricIndex);
+            }
           }
-          return p + 0.5;
-        });
-      }, 50);
+        }, 100);
+      } else {
+        // Fallback for dummy tracks without audio
+        interval = setInterval(() => {
+          setProgress(p => {
+            if (p >= 100) {
+              setReplays(r => r + 1);
+              return 0; // Loop mockup
+            }
+            return p + 0.5;
+          });
+        }, 50);
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
     }
     
     return () => clearInterval(interval);
-  }, [isActive, isPlaying]);
+  }, [isActive, isPlaying, song.lyrics]);
 
-  // Mock lyrics sync
+  // Mock lyrics sync for fallback
   useEffect(() => {
-    if (isActive && isPlaying) {
+    if (!audioRef.current && isActive && isPlaying) {
       const lyricIndex = Math.floor((progress / 100) * song.lyrics.length);
-      setCurrentLyricIndex(Math.min(lyricIndex, song.lyrics.length - 1));
+      setCurrentLyricIndex(Math.min(lyricIndex, Math.max(0, song.lyrics.length - 1)));
     }
   }, [progress, isActive, isPlaying, song.lyrics.length]);
 
@@ -59,6 +111,9 @@ export default function SongCard({ song, isActive }: SongCardProps) {
       setProgress(0);
       setListenStartTime(Date.now());
       setReplays(0);
+      if (audioRef.current) {
+         audioRef.current.currentTime = 0;
+      }
     } else {
       setIsPlaying(false);
       setShowShareModal(false);
@@ -272,7 +327,7 @@ export default function SongCard({ song, isActive }: SongCardProps) {
                 <span className="text-xs font-medium bg-primary/20 text-primary px-2 py-1 rounded">{song.mood}</span>
               </div>
               <p className="font-display text-xl font-bold text-white text-center italic mb-4">
-                "{song.lyrics[currentLyricIndex]?.text || song.lyrics[0].text}"
+                "{song.lyrics[currentLyricIndex]?.text || song.lyrics[0]?.text || ''}"
               </p>
               <div className="flex items-center gap-3 pt-4 border-t border-white/10">
                  <div className="w-8 h-8 rounded bg-white/10 overflow-hidden">

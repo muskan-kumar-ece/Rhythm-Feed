@@ -1,9 +1,77 @@
 import { useState } from "react";
-import { Upload, FileAudio, Image as ImageIcon, Tag, Activity, Users, Clock, MapPin, PlayCircle } from "lucide-react";
-import { dummyAnalytics } from "@/lib/dummyData";
+import { Upload, FileAudio, Image as ImageIcon, Tag, Activity, Users, Clock, MapPin, PlayCircle, Plus } from "lucide-react";
+import { dummyAnalytics, dummySongs, Song } from "@/lib/dummyData";
+import { useLocation } from "wouter";
 
 export default function ArtistDashboard() {
   const [activeTab, setActiveTab] = useState<'analytics' | 'upload'>('analytics');
+  const [, setLocation] = useLocation();
+
+  // Upload Form State
+  const [title, setTitle] = useState("");
+  const [artist, setArtist] = useState("Local Artist");
+  const [mood, setMood] = useState("Focus");
+  const [lyricsText, setLyricsText] = useState("");
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setCoverPreview(url);
+    }
+  };
+
+  const handleAudioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setAudioFile(file);
+  };
+
+  const handleUpload = () => {
+    if (!title || !audioFile) return; // Basic validation
+    setIsUploading(true);
+
+    // Simulate upload delay and processing
+    setTimeout(() => {
+      // Create a dummy audio URL (in reality, we'd use the uploaded file)
+      const audioUrl = URL.createObjectURL(audioFile);
+
+      // Parse simple lyrics (each line becomes a timed lyric block for mockup purposes)
+      const parsedLyrics = lyricsText.split('\n').filter(l => l.trim()).map((text, i) => ({
+        time: i * 3, // mock 3s intervals
+        text
+      }));
+
+      const newSong: Song = {
+        id: `mock-${Date.now()}`,
+        title,
+        artist,
+        coverUrl: coverPreview || "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=500&auto=format&fit=crop",
+        audioUrl,
+        mood,
+        likes: 0,
+        comments: 0,
+        saves: 0,
+        isFollowingArtist: false,
+        lyrics: parsedLyrics.length > 0 ? parsedLyrics : [{ time: 0, text: "(Instrumental)" }]
+      };
+
+      // Add to front of dummy feed
+      dummySongs.unshift(newSong);
+      
+      setIsUploading(false);
+      
+      // Reset form and navigate to feed
+      setTitle("");
+      setLyricsText("");
+      setCoverPreview(null);
+      setAudioFile(null);
+      setLocation("/");
+      
+    }, 1500);
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -88,25 +156,30 @@ export default function ArtistDashboard() {
           </div>
         ) : (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-md mx-auto">
-            <div className="p-8 border-2 border-dashed border-white/10 rounded-2xl bg-white/5 flex flex-col items-center justify-center gap-4 text-center cursor-pointer hover:bg-white/10 hover:border-primary/50 transition-all">
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
+            {/* Audio Upload */}
+            <label className="relative block p-8 border-2 border-dashed border-white/10 rounded-2xl bg-white/5 flex flex-col items-center justify-center gap-4 text-center cursor-pointer hover:bg-white/10 hover:border-primary/50 transition-all overflow-hidden group">
+              <input type="file" accept="audio/mp3,audio/wav" className="hidden" onChange={handleAudioChange} />
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <FileAudio size={32} className="text-primary" />
               </div>
               <div>
-                <p className="font-medium text-lg">Upload Master File</p>
-                <p className="text-sm text-white/50">WAV, FLAC, or MP3 up to 100MB</p>
+                <p className="font-medium text-lg text-white">
+                  {audioFile ? audioFile.name : "Upload Master File"}
+                </p>
+                <p className="text-sm text-white/50">
+                  {audioFile ? "Audio selected" : "WAV, FLAC, or MP3 up to 100MB"}
+                </p>
               </div>
-              <button className="px-6 py-2 bg-primary text-white rounded-full font-medium text-sm mt-2">
-                Select File
-              </button>
-            </div>
+            </label>
 
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-white/80">Track Title</label>
                 <input 
                   type="text" 
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all text-white"
                   placeholder="E.g. Midnight Drive"
                 />
               </div>
@@ -114,20 +187,34 @@ export default function ArtistDashboard() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-white/80">Cover Art</label>
-                  <div className="h-24 border border-white/10 rounded-xl bg-white/5 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-colors">
-                    <ImageIcon className="text-white/40" />
-                  </div>
+                  <label className="h-24 border border-white/10 rounded-xl bg-white/5 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-colors relative overflow-hidden group">
+                    <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                    {coverPreview ? (
+                      <img src={coverPreview} alt="Cover Preview" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                    ) : (
+                      <ImageIcon className="text-white/40" />
+                    )}
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                       <Plus className="text-white" />
+                    </div>
+                  </label>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-white/80">Mood Tag</label>
                   <div className="relative">
                     <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={16} />
-                    <select className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm appearance-none focus:outline-none focus:border-primary transition-all text-white">
+                    <select 
+                      value={mood}
+                      onChange={e => setMood(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm appearance-none focus:outline-none focus:border-primary transition-all text-white"
+                    >
                       <option className="bg-background text-white">Focus</option>
                       <option className="bg-background text-white">Study</option>
                       <option className="bg-background text-white">Gym</option>
                       <option className="bg-background text-white">Night Drive</option>
                       <option className="bg-background text-white">Sad</option>
+                      <option className="bg-background text-white">Hype</option>
+                      <option className="bg-background text-white">Chill</option>
                     </select>
                   </div>
                 </div>
@@ -136,16 +223,22 @@ export default function ArtistDashboard() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-white/80 flex items-center justify-between">
                   Lyrics Sync
-                  <span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">AI Auto-Sync Available</span>
+                  <span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">Manual Sync</span>
                 </label>
                 <textarea 
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm h-32 resize-none focus:outline-none focus:border-primary transition-all font-mono"
-                  placeholder="Paste your lyrics here..."
+                  value={lyricsText}
+                  onChange={e => setLyricsText(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm h-32 resize-none focus:outline-none focus:border-primary transition-all font-mono text-white/90 leading-relaxed"
+                  placeholder="Paste lyrics here. Each line will become a synced segment..."
                 ></textarea>
               </div>
 
-              <button className="w-full bg-white text-black font-semibold rounded-xl py-4 hover:bg-white/90 transition-colors mt-4">
-                Upload & Process
+              <button 
+                onClick={handleUpload}
+                disabled={!title || !audioFile || isUploading}
+                className="w-full bg-primary text-primary-foreground font-bold rounded-xl py-4 hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-4 active:scale-[0.98]"
+              >
+                {isUploading ? "Uploading & Processing..." : "Upload Track to Feed"}
               </button>
             </div>
           </div>
@@ -162,7 +255,7 @@ function StatCard({ icon, label, value, isSmall = false }: { icon: React.ReactNo
         {icon}
       </div>
       <p className="text-sm text-white/50 mb-1">{label}</p>
-      <p className={`font-display font-semibold ${isSmall ? 'text-xl' : 'text-2xl'}`}>{value}</p>
+      <p className={`font-display font-semibold ${isSmall ? 'text-xl' : 'text-2xl'} text-white`}>{value}</p>
     </div>
   );
 }
