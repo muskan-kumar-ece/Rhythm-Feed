@@ -1,13 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SongCard from "@/components/Feed/SongCard";
-import { dummySongs, Song } from "@/lib/dummyData";
+import { Song } from "@/lib/dummyData";
+import { generateFeedSegment } from "@/lib/recommendation";
 
 export default function Feed() {
   const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   
   // State for infinite feed
-  const [feedItems, setFeedItems] = useState<Song[]>(dummySongs);
+  const [feedItems, setFeedItems] = useState<Song[]>([]);
+
+  // Initialize feed
+  useEffect(() => {
+    setFeedItems(generateFeedSegment());
+  }, []);
 
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
@@ -23,14 +29,15 @@ export default function Feed() {
       setActiveIndex(index);
     }
     
-    // Infinite loading: append more items when reaching the end
+    // Infinite loading: append more curated items when reaching the end
     if (index >= feedItems.length - 2) {
-      setFeedItems(prev => [
-        ...prev, 
-        ...dummySongs.map(s => ({ ...s, id: `${s.id}-${Date.now()}-${Math.random()}` }))
-      ]);
+      setFeedItems(prev => [...prev, ...generateFeedSegment()]);
     }
   }, [activeIndex, feedItems.length]);
+
+  if (feedItems.length === 0) {
+    return <div className="h-[100dvh] w-full bg-black flex items-center justify-center text-white/50">Loading feed...</div>;
+  }
 
   return (
     <div 
