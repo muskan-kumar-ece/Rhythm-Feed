@@ -64,7 +64,11 @@ export default function ArtistDashboard() {
           energy,
           genre: [genre],
           mood: [mood, 'New Release'],
-          popularity: 50 // Start new uploads at medium baseline
+          popularity: {
+            plays: 0,
+            likes: 0,
+            replays: 0
+          }
         },
         lyrics: parsedLyrics.length > 0 ? parsedLyrics : [{ time: 0, text: "(Instrumental)" }]
       };

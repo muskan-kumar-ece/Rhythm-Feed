@@ -16,7 +16,10 @@ function calculateTasteMatchScore(song: Song, preferredMoods: Record<string, num
   });
 
   // 2. Base Popularity (Light weight, acts as a tiebreaker)
-  score += (song.features.popularity * 0.1);
+  const popularityScore = (song.features.popularity.plays * 0.0001) + 
+                          (song.features.popularity.likes * 0.001) + 
+                          (song.features.popularity.replays * 0.005);
+  score += Math.min(popularityScore, 10); // Cap popularity contribution
 
   return score;
 }
@@ -55,9 +58,12 @@ export function generateFeedSegment(): Song[] {
     });
   }
 
+  // Helper to calculate total popularity
+  const getPopularityTotal = (song: Song) => song.features.popularity.plays + song.features.popularity.likes + song.features.popularity.replays;
+
   // 2. Define our song pools
   // Trending: Top 50% by popularity feature
-  const trendingPool = [...dummySongs].sort((a, b) => b.features.popularity - a.features.popularity);
+  const trendingPool = [...dummySongs].sort((a, b) => getPopularityTotal(b) - getPopularityTotal(a));
   
   // New Uploads: In a real app, this would use creation date. Here we use the end of the array.
   const newPool = [...dummySongs].reverse();
@@ -67,7 +73,7 @@ export function generateFeedSegment(): Song[] {
   const hasHistory = Object.keys(moodScores).length > 0;
   
   const personalizedPool = [...dummySongs].sort((a, b) => {
-    if (!hasHistory) return b.features.popularity - a.features.popularity;
+    if (!hasHistory) return getPopularityTotal(b) - getPopularityTotal(a);
     const scoreA = calculateTasteMatchScore(a, moodScores);
     const scoreB = calculateTasteMatchScore(b, moodScores);
     return scoreB - scoreA;

@@ -8,7 +8,11 @@ export type SongFeatures = {
   energy: 'low' | 'medium' | 'high';
   genre: string[];
   mood: string[]; // Expanded from single string to array for better matching
-  popularity: number; // 0-100 score combining likes, saves, plays
+  popularity: {
+    plays: number;
+    likes: number;
+    replays: number;
+  };
 };
 
 export type Song = {
@@ -43,7 +47,11 @@ export const dummySongs: Song[] = [
       energy: 'medium',
       genre: ['Synthwave', 'Electronic', 'Retrowave'],
       mood: ['Focus', 'Night Drive', 'Nostalgic'],
-      popularity: 85
+      popularity: {
+        plays: 45000,
+        likes: 12400,
+        replays: 3200
+      }
     },
     lyrics: [
       { time: 0, text: "Cruising down the empty street" },
@@ -68,7 +76,11 @@ export const dummySongs: Song[] = [
       energy: 'low',
       genre: ['Lofi', 'Hip Hop', 'Chill'],
       mood: ['Study', 'Relax', 'Sad', 'Cozy'],
-      popularity: 92
+      popularity: {
+        plays: 120000,
+        likes: 45200,
+        replays: 15400
+      }
     },
     lyrics: [
       { time: 0, text: "Rain tapping on the glass" },
@@ -93,7 +105,11 @@ export const dummySongs: Song[] = [
       energy: 'low',
       genre: ['Ambient', 'Cinematic', 'Acoustic'],
       mood: ['Sad', 'Melancholy', 'Reflective'],
-      popularity: 65
+      popularity: {
+        plays: 35000,
+        likes: 8900,
+        replays: 1200
+      }
     },
     lyrics: [
       { time: 0, text: "I can't seem to find the words" },
@@ -118,7 +134,11 @@ export const dummySongs: Song[] = [
       energy: 'high',
       genre: ['Phonk', 'Electronic', 'Bass'],
       mood: ['Gym', 'Hype', 'Aggressive', 'Focus'],
-      popularity: 95
+      popularity: {
+        plays: 250000,
+        likes: 67300,
+        replays: 45000
+      }
     },
     lyrics: [
       { time: 0, text: "Push it to the absolute limit" },
