@@ -164,3 +164,34 @@ export function generateFeedSegment(): Song[] {
 
   return segment;
 }
+
+/**
+ * Generates a specific mood-based feed segment.
+ * Ensures all songs match the requested mood, ordered by viral score.
+ */
+export function generateMoodFeedSegment(targetMood: string): Song[] {
+  // Filter all available songs that have the target mood
+  const moodPool = dummySongs.filter(song => song.features.mood.includes(targetMood));
+  
+  // If we don't have enough songs for this mood, fallback to all songs
+  const sourcePool = moodPool.length > 0 ? moodPool : dummySongs;
+
+  // Sort them by our viral score so the best mood songs appear first
+  const sortedPool = [...sourcePool].sort((a, b) => calculateViralScore(b) - calculateViralScore(a));
+
+  const segment: Song[] = [];
+  
+  // Create a batch of 5 songs
+  for (let i = 0; i < 5; i++) {
+    // Pick mostly from the top of the sorted list, with some randomness to keep it fresh
+    const poolLimit = Math.max(1, Math.ceil(sortedPool.length * 0.7)); // Top 70%
+    const item = sortedPool[Math.floor(Math.random() * poolLimit)];
+    
+    segment.push({ 
+      ...item, 
+      id: `${item.id}-mood-${targetMood}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}` 
+    });
+  }
+
+  return segment;
+}

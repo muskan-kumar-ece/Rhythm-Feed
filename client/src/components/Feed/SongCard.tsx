@@ -236,14 +236,6 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
           <Play fill="white" size={48} className="ml-2 text-white" />
         </div>
 
-        {/* Top Mood Badge */}
-        <div className="absolute top-12 left-4">
-          <div className="glass px-4 py-1.5 rounded-full flex items-center gap-2">
-            <Music2 size={14} className="text-primary" />
-            <span className="text-xs font-medium text-white/90">{song.mood} Mix</span>
-          </div>
-        </div>
-
         <div className="flex items-end justify-between w-full">
           {/* Left: Info & Lyrics */}
           <div className="flex-1 pr-12 space-y-6">
