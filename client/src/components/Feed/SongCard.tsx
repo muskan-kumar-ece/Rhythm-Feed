@@ -48,13 +48,21 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
 
   // Tracking state
   const [listenStartTime, setListenStartTime] = useState<number | null>(null);
+  const [totalListenTimeMs, setTotalListenTimeMs] = useState(0);
+  const [lastResumeTime, setLastResumeTime] = useState<number | null>(null);
   const [replays, setReplays] = useState(0);
+  const [pauseCount, setPauseCount] = useState(0);
 
   // Mock playback logic
   useEffect(() => {
     let interval: NodeJS.Timeout;
     
     if (isActive && isPlaying) {
+      // Handle resuming logic for tracking
+      if (!lastResumeTime) {
+        setLastResumeTime(Date.now());
+      }
+
       if (audioRef.current) {
         audioRef.current.play().catch(e => console.error("Audio playback failed:", e));
         
@@ -100,6 +108,11 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
       if (audioRef.current) {
         audioRef.current.pause();
       }
+      // Handle pausing logic for tracking
+      if (lastResumeTime) {
+         setTotalListenTimeMs(prev => prev + (Date.now() - lastResumeTime));
+         setLastResumeTime(null);
+      }
     }
     
     return () => clearInterval(interval);
@@ -119,7 +132,10 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
       setIsPlaying(true);
       setProgress(0);
       setListenStartTime(Date.now());
+      setLastResumeTime(Date.now());
+      setTotalListenTimeMs(0);
       setReplays(0);
+      setPauseCount(0);
       if (audioRef.current) {
          audioRef.current.currentTime = 0;
       }
@@ -129,11 +145,19 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
       
       // Finalize tracking when card becomes inactive
       if (listenStartTime) {
-        const durationMs = Date.now() - listenStartTime;
-        const durationSec = durationMs / 1000;
+        // Calculate final listen time
+        let finalListenMs = totalListenTimeMs;
+        if (lastResumeTime) {
+           finalListenMs += (Date.now() - lastResumeTime);
+        }
+        
+        const durationSec = finalListenMs / 1000;
         
         // Consider it a skip if listened for less than 5 seconds and no replays
         const isSkip = durationSec < 5 && replays === 0;
+        
+        // Calculate skip time if it was a skip
+        const skipTimeSeconds = isSkip && audioRef.current ? parseFloat(audioRef.current.currentTime.toFixed(1)) : null;
         
         const hour = new Date().getHours();
         let timeOfDay = "Night";
@@ -146,13 +170,16 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
           songTitle: song.title,
           durationSeconds: parseFloat(durationSec.toFixed(1)),
           skipped: isSkip,
+          skipTimeSeconds,
           replays,
+          pauseCount,
           liked: isLiked,
           timestamp: new Date().toISOString(),
           timeOfDay
         });
 
         setListenStartTime(null);
+        setLastResumeTime(null);
       }
     }
   }, [isActive]);
@@ -160,6 +187,12 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
   const togglePlay = (e: React.MouseEvent) => {
     if (showShareModal) return;
     e.stopPropagation();
+    
+    // Track pause event
+    if (isPlaying) {
+      setPauseCount(p => p + 1);
+    }
+    
     setIsPlaying(!isPlaying);
   };
 
