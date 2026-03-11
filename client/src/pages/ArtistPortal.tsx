@@ -11,6 +11,10 @@ export default function ArtistDashboard() {
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("Local Artist");
   const [mood, setMood] = useState("Focus");
+  const [tempo, setTempo] = useState<'slow'|'medium'|'fast'>('medium');
+  const [energy, setEnergy] = useState<'low'|'medium'|'high'>('medium');
+  const [genre, setGenre] = useState("Electronic");
+  
   const [lyricsText, setLyricsText] = useState("");
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -55,6 +59,13 @@ export default function ArtistDashboard() {
         comments: 0,
         saves: 0,
         isFollowingArtist: false,
+        features: {
+          tempo,
+          energy,
+          genre: [genre],
+          mood: [mood, 'New Release'],
+          popularity: 50 // Start new uploads at medium baseline
+        },
         lyrics: parsedLyrics.length > 0 ? parsedLyrics : [{ time: 0, text: "(Instrumental)" }]
       };
 
@@ -200,7 +211,7 @@ export default function ArtistDashboard() {
                   </label>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-white/80">Mood Tag</label>
+                  <label className="text-sm font-medium text-white/80">Primary Mood</label>
                   <div className="relative">
                     <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={16} />
                     <select 
@@ -217,6 +228,39 @@ export default function ArtistDashboard() {
                       <option className="bg-background text-white">Chill</option>
                     </select>
                   </div>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-white/80">Recommendation Features</label>
+                <div className="grid grid-cols-3 gap-2">
+                   <select 
+                      value={tempo}
+                      onChange={e => setTempo(e.target.value as any)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs appearance-none focus:outline-none focus:border-primary transition-all text-white"
+                    >
+                      <option value="slow" className="bg-background text-white">Slow Tempo</option>
+                      <option value="medium" className="bg-background text-white">Mid Tempo</option>
+                      <option value="fast" className="bg-background text-white">Fast Tempo</option>
+                    </select>
+                    
+                    <select 
+                      value={energy}
+                      onChange={e => setEnergy(e.target.value as any)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs appearance-none focus:outline-none focus:border-primary transition-all text-white"
+                    >
+                      <option value="low" className="bg-background text-white">Low Energy</option>
+                      <option value="medium" className="bg-background text-white">Mid Energy</option>
+                      <option value="high" className="bg-background text-white">High Energy</option>
+                    </select>
+
+                    <input 
+                      type="text" 
+                      value={genre}
+                      onChange={e => setGenre(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-primary transition-all text-white"
+                      placeholder="Genre (e.g. Pop)"
+                    />
                 </div>
               </div>
 

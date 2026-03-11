@@ -3,18 +3,27 @@ import lofiImg from '../assets/images/cover-lofi.png';
 import sadImg from '../assets/images/cover-sad.png';
 import gymImg from '../assets/images/cover-gym.png';
 
+export type SongFeatures = {
+  tempo: 'slow' | 'medium' | 'fast';
+  energy: 'low' | 'medium' | 'high';
+  genre: string[];
+  mood: string[]; // Expanded from single string to array for better matching
+  popularity: number; // 0-100 score combining likes, saves, plays
+};
+
 export type Song = {
   id: string;
   title: string;
   artist: string;
   coverUrl: string;
   audioUrl: string; // We'll just use a dummy or no audio for mockup
-  mood: string;
+  mood: string; // Primary mood for display
   likes: number;
   comments: number;
   saves: number;
   lyrics: { time: number; text: string }[];
   isFollowingArtist: boolean;
+  features: SongFeatures; // New detailed metadata
 };
 
 export const dummySongs: Song[] = [
@@ -29,6 +38,13 @@ export const dummySongs: Song[] = [
     comments: 342,
     saves: 890,
     isFollowingArtist: false,
+    features: {
+      tempo: 'medium',
+      energy: 'medium',
+      genre: ['Synthwave', 'Electronic', 'Retrowave'],
+      mood: ['Focus', 'Night Drive', 'Nostalgic'],
+      popularity: 85
+    },
     lyrics: [
       { time: 0, text: "Cruising down the empty street" },
       { time: 3, text: "Neon lights and synthetic beat" },
@@ -47,6 +63,13 @@ export const dummySongs: Song[] = [
     comments: 1205,
     saves: 5600,
     isFollowingArtist: true,
+    features: {
+      tempo: 'slow',
+      energy: 'low',
+      genre: ['Lofi', 'Hip Hop', 'Chill'],
+      mood: ['Study', 'Relax', 'Sad', 'Cozy'],
+      popularity: 92
+    },
     lyrics: [
       { time: 0, text: "Rain tapping on the glass" },
       { time: 3, text: "Watching the hours pass" },
@@ -65,6 +88,13 @@ export const dummySongs: Song[] = [
     comments: 89,
     saves: 430,
     isFollowingArtist: false,
+    features: {
+      tempo: 'slow',
+      energy: 'low',
+      genre: ['Ambient', 'Cinematic', 'Acoustic'],
+      mood: ['Sad', 'Melancholy', 'Reflective'],
+      popularity: 65
+    },
     lyrics: [
       { time: 0, text: "I can't seem to find the words" },
       { time: 3, text: "In this quiet, lonely world" },
@@ -83,6 +113,13 @@ export const dummySongs: Song[] = [
     comments: 2100,
     saves: 12400,
     isFollowingArtist: false,
+    features: {
+      tempo: 'fast',
+      energy: 'high',
+      genre: ['Phonk', 'Electronic', 'Bass'],
+      mood: ['Gym', 'Hype', 'Aggressive', 'Focus'],
+      popularity: 95
+    },
     lyrics: [
       { time: 0, text: "Push it to the absolute limit" },
       { time: 3, text: "No excuses, gotta get in it" },
