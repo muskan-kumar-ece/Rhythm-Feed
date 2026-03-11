@@ -35,6 +35,34 @@ export function calculateViralScore(song: Song): number {
 }
 
 /**
+ * Calculates a momentum/trending score based on engagement velocity in the last 24 hours.
+ */
+export function calculateTrendingScore(song: Song): number {
+  const recent = song.features.popularity.recent24h;
+  const total = song.features.popularity;
+
+  if (recent.plays === 0) return 0;
+
+  // Recent engagement rates
+  const recentLikeRate = recent.likes / recent.plays;
+  const recentReplayRate = recent.replays / recent.plays;
+  const recentCommentRate = recent.comments / recent.plays;
+
+  // Compare recent velocity vs historical velocity (Is it blowing up right now?)
+  // If total plays is 0, velocity is high.
+  const historicalPlayRate = total.plays > recent.plays ? (total.plays - recent.plays) / 30 : 1; // fake historical 30 days
+  const playVelocity = recent.plays / Math.max(historicalPlayRate, 1);
+
+  // Score based on recent rates and play velocity
+  let score = (recentLikeRate * 40) + (recentReplayRate * 40) + (recentCommentRate * 20);
+  
+  // Add velocity bonus
+  const velocityBonus = Math.min(playVelocity * 10, 50); // Cap velocity bonus at 50
+  
+  return score + velocityBonus;
+}
+
+/**
  * Calculates a similarity score between a user's taste profile and a song's features.
  */
 function calculateTasteMatchScore(song: Song, preferredMoods: Record<string, number>): number {
@@ -51,6 +79,10 @@ function calculateTasteMatchScore(song: Song, preferredMoods: Record<string, num
   const viralScore = calculateViralScore(song);
   score += (viralScore * 0.1); 
 
+  // 3. Trending boost (If it's gaining rapid momentum, we push it slightly out of their comfort zone)
+  const trendingScore = calculateTrendingScore(song);
+  score += (trendingScore * 0.15);
+
   return score;
 }
 
@@ -58,6 +90,7 @@ function calculateTasteMatchScore(song: Song, preferredMoods: Record<string, num
  * A mock recommendation engine that generates a feed segment based on:
  * - Personalized: User's listening history
  * - Viral/Trending: Songs with the highest dynamic viral score
+ * - Rapid Momentum: Songs actively trending in the last 24 hours
  * - New: Recently uploaded songs
  * - Random: Serendipitous discovery
  */
@@ -86,8 +119,11 @@ export function generateFeedSegment(): Song[] {
 
   // 2. Define our song pools
   
-  // Viral/Trending: Sort by our dynamic viral score instead of raw popularity
-  const trendingPool = [...dummySongs].sort((a, b) => calculateViralScore(b) - calculateViralScore(a));
+  // Viral: Sort by our dynamic viral score
+  const viralPool = [...dummySongs].sort((a, b) => calculateViralScore(b) - calculateViralScore(a));
+  
+  // Rapid Trending: Sort by 24h momentum
+  const rapidTrendingPool = [...dummySongs].sort((a, b) => calculateTrendingScore(b) - calculateTrendingScore(a));
   
   const newPool = [...dummySongs].reverse();
 
@@ -116,11 +152,12 @@ export function generateFeedSegment(): Song[] {
     return { ...item, id: `${item.id}-${typePrefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}` };
   };
 
-  // 3. Construct a blended segment
+  // 3. Construct a blended segment (6 songs to include rapid trending)
   const segment: Song[] = [];
   
   segment.push(pickFromPool(personalizedPool, 'personal1', true)); 
-  segment.push(pickFromPool(trendingPool, 'viral', true)); // High viral score
+  segment.push(pickFromPool(viralPool, 'viral', true)); // High overall viral score
+  segment.push(pickFromPool(rapidTrendingPool, 'rapid-trend', true)); // Actively blowing up right now
   segment.push(pickFromPool(randomPool, 'discover'));
   segment.push(pickFromPool(personalizedPool, 'personal2', true));
   segment.push(pickFromPool(newPool, 'new'));

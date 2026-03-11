@@ -14,6 +14,12 @@ export type SongFeatures = {
     replays: number;
     completions: number;
     shares: number;
+    recent24h: {
+      plays: number;
+      likes: number;
+      replays: number;
+      comments: number;
+    };
   };
 };
 
@@ -56,7 +62,13 @@ export const dummySongs: Song[] = [
         likes: 12400,
         replays: 3200,
         completions: 28000,
-        shares: 210
+        shares: 210,
+        recent24h: {
+          plays: 5000,
+          likes: 1200,
+          replays: 400,
+          comments: 80
+        }
       }
     },
     lyrics: [
@@ -88,7 +100,13 @@ export const dummySongs: Song[] = [
         likes: 45200,
         replays: 15400,
         completions: 85000,
-        shares: 1150
+        shares: 1150,
+        recent24h: {
+          plays: 1500,
+          likes: 300,
+          replays: 200,
+          comments: 10
+        }
       }
     },
     lyrics: [
@@ -120,7 +138,13 @@ export const dummySongs: Song[] = [
         likes: 8900,
         replays: 1200,
         completions: 12000,
-        shares: 55
+        shares: 55,
+        recent24h: {
+          plays: 800,
+          likes: 150,
+          replays: 50,
+          comments: 5
+        }
       }
     },
     lyrics: [
@@ -152,7 +176,13 @@ export const dummySongs: Song[] = [
         likes: 67300,
         replays: 45000,
         completions: 190000,
-        shares: 8900
+        shares: 8900,
+        recent24h: {
+          plays: 45000,
+          likes: 12000,
+          replays: 8500,
+          comments: 450
+        }
       }
     },
     lyrics: [
