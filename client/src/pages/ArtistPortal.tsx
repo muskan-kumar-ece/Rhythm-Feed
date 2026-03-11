@@ -58,6 +58,7 @@ export default function ArtistDashboard() {
         likes: 0,
         comments: 0,
         saves: 0,
+        shares: 0,
         isFollowingArtist: false,
         features: {
           tempo,
@@ -67,7 +68,9 @@ export default function ArtistDashboard() {
           popularity: {
             plays: 0,
             likes: 0,
-            replays: 0
+            replays: 0,
+            completions: 0,
+            shares: 0
           }
         },
         lyrics: parsedLyrics.length > 0 ? parsedLyrics : [{ time: 0, text: "(Instrumental)" }]

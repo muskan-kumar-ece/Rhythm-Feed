@@ -12,6 +12,8 @@ export type SongFeatures = {
     plays: number;
     likes: number;
     replays: number;
+    completions: number;
+    shares: number;
   };
 };
 
@@ -25,6 +27,7 @@ export type Song = {
   likes: number;
   comments: number;
   saves: number;
+  shares: number;
   lyrics: { time: number; text: string }[];
   isFollowingArtist: boolean;
   features: SongFeatures; // New detailed metadata
@@ -41,6 +44,7 @@ export const dummySongs: Song[] = [
     likes: 12400,
     comments: 342,
     saves: 890,
+    shares: 210,
     isFollowingArtist: false,
     features: {
       tempo: 'medium',
@@ -50,7 +54,9 @@ export const dummySongs: Song[] = [
       popularity: {
         plays: 45000,
         likes: 12400,
-        replays: 3200
+        replays: 3200,
+        completions: 28000,
+        shares: 210
       }
     },
     lyrics: [
@@ -70,6 +76,7 @@ export const dummySongs: Song[] = [
     likes: 45200,
     comments: 1205,
     saves: 5600,
+    shares: 1150,
     isFollowingArtist: true,
     features: {
       tempo: 'slow',
@@ -79,7 +86,9 @@ export const dummySongs: Song[] = [
       popularity: {
         plays: 120000,
         likes: 45200,
-        replays: 15400
+        replays: 15400,
+        completions: 85000,
+        shares: 1150
       }
     },
     lyrics: [
@@ -99,6 +108,7 @@ export const dummySongs: Song[] = [
     likes: 8900,
     comments: 89,
     saves: 430,
+    shares: 55,
     isFollowingArtist: false,
     features: {
       tempo: 'slow',
@@ -108,7 +118,9 @@ export const dummySongs: Song[] = [
       popularity: {
         plays: 35000,
         likes: 8900,
-        replays: 1200
+        replays: 1200,
+        completions: 12000,
+        shares: 55
       }
     },
     lyrics: [
@@ -128,6 +140,7 @@ export const dummySongs: Song[] = [
     likes: 67300,
     comments: 2100,
     saves: 12400,
+    shares: 8900,
     isFollowingArtist: false,
     features: {
       tempo: 'fast',
@@ -137,7 +150,9 @@ export const dummySongs: Song[] = [
       popularity: {
         plays: 250000,
         likes: 67300,
-        replays: 45000
+        replays: 45000,
+        completions: 190000,
+        shares: 8900
       }
     },
     lyrics: [
