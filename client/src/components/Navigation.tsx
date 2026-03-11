@@ -8,8 +8,7 @@ export default function Navigation() {
   const navItems = [
     { icon: Home, label: "Feed", href: "/" },
     { icon: MessageSquareQuote, label: "Moments", href: "/moments" },
-    { icon: PlusSquare, label: "Upload", href: "/artist/upload" },
-    { icon: BarChart2, label: "Analytics", href: "/artist/dashboard" },
+    { icon: PlusSquare, label: "Studio", href: "/artist/dashboard" },
     { icon: User, label: "Profile", href: "/profile" },
   ];
 

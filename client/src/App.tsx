@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Feed from "@/pages/Feed";
 import ArtistPortal from "@/pages/ArtistPortal";
 import Moments from "@/pages/Moments";
+import Profile from "@/pages/Profile";
 import Navigation from "@/components/Navigation";
 
 function Router() {
@@ -17,11 +18,7 @@ function Router() {
           <Route path="/" component={Feed} />
           <Route path="/artist/:tab?" component={ArtistPortal} />
           <Route path="/moments" component={Moments} />
-          
-          {/* Fallback mock routes */}
-          <Route path="/profile">
-            <div className="p-8 pt-20 text-center"><h2 className="text-2xl font-display font-bold">Profile</h2><p className="text-muted-foreground mt-2">Your saved sounds.</p></div>
-          </Route>
+          <Route path="/profile" component={Profile} />
           
           <Route component={NotFound} />
         </Switch>
