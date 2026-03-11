@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Upload, FileAudio, Image as ImageIcon, Tag, Activity, Users, Clock, MapPin, PlayCircle, Plus } from "lucide-react";
+import { Upload, FileAudio, Image as ImageIcon, Tag, Activity, Users, Clock, MapPin, PlayCircle, Plus, Music, Repeat, Heart, MessageCircle } from "lucide-react";
 import { dummyAnalytics, dummySongs, Song } from "@/lib/dummyData";
 import { useLocation } from "wouter";
 
@@ -101,13 +101,13 @@ export default function ArtistDashboard() {
     <div className="min-h-screen bg-background pb-20">
       {/* Header */}
       <header className="pt-12 pb-6 px-6 glass sticky top-0 z-40">
-        <h1 className="text-3xl font-display font-bold text-white tracking-tight">Artist Portal</h1>
+        <h1 className="text-3xl font-display font-bold text-white tracking-tight">Studio</h1>
         <div className="flex gap-6 mt-6 border-b border-white/10">
           <button 
             onClick={() => setActiveTab('analytics')}
             className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === 'analytics' ? 'text-white' : 'text-white/50'}`}
           >
-            Overview
+            Analytics
             {activeTab === 'analytics' && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary shadow-[0_0_10px_rgba(var(--primary),0.8)]" />
             )}
@@ -126,52 +126,95 @@ export default function ArtistDashboard() {
 
       <main className="p-6">
         {activeTab === 'analytics' ? (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Stats Grid */}
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-md mx-auto">
+            {/* Top Level Stats */}
             <div className="grid grid-cols-2 gap-4">
-              <StatCard icon={<PlayCircle />} label="Total Plays" value={dummyAnalytics.totalPlays} />
-              <StatCard icon={<Activity />} label="Completion" value={dummyAnalytics.completionRate} />
-              <StatCard icon={<Clock />} label="Top Time" value="10pm-2am" isSmall />
-              <StatCard icon={<MapPin />} label="Top Region" value="LA, USA" isSmall />
+              <StatCard icon={<PlayCircle />} label="Total Plays" value={dummyAnalytics.totalPlays} trend="+12%" />
+              <StatCard icon={<Users />} label="Unique Listeners" value="845K" trend="+5%" />
+            </div>
+
+            {/* Engagement Metrics */}
+            <div>
+              <h3 className="text-sm font-medium text-white/60 mb-4 uppercase tracking-wider">Engagement Funnel</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <StatCard icon={<Activity />} label="Completion Rate" value={dummyAnalytics.completionRate} isSmall />
+                <StatCard icon={<Repeat />} label="Replay Rate" value="34%" isSmall />
+                <StatCard icon={<Heart />} label="Like Rate" value="15%" isSmall />
+                <StatCard icon={<MessageCircle />} label="Comments/10k" value="45" isSmall />
+              </div>
             </div>
 
             {/* Listener Retention Chart (Mockup) */}
-            <div className="mt-8 p-6 rounded-2xl border border-white/5 bg-white/5 backdrop-blur-md">
-              <h3 className="text-sm font-medium text-white/60 mb-4">Listener Retention</h3>
-              <div className="h-40 flex items-end gap-2">
-                {[80, 75, 68, 65, 60, 58, 55, 50, 48, 45, 40, 38].map((h, i) => (
-                  <div key={i} className="flex-1 bg-primary/20 rounded-t-sm relative group cursor-pointer hover:bg-primary/40 transition-colors" style={{ height: `${h}%` }}>
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-black text-xs p-1 rounded transition-opacity pointer-events-none">
-                      {h}%
+            <div className="p-6 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="font-semibold text-white">Listener Retention</h3>
+                  <p className="text-xs text-white/50">Average drop-off per track</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-medium text-destructive">{dummyAnalytics.skipRate}</p>
+                  <p className="text-[10px] text-white/40">Skip Rate</p>
+                </div>
+              </div>
+              
+              <div className="h-40 flex items-end gap-1.5 w-full">
+                {[98, 92, 85, 78, 75, 71, 68, 65, 62, 59, 57, 55, 52, 48, 45, 42, 40].map((h, i) => (
+                  <div key={i} className="flex-1 bg-primary/30 rounded-t-sm relative group cursor-pointer hover:bg-primary transition-colors h-full flex flex-col justify-end" style={{ height: `${Math.max(h, 5)}%` }}>
+                    <div className="w-full h-full bg-gradient-to-t from-primary/50 to-primary rounded-t-sm opacity-50 group-hover:opacity-100 transition-opacity" />
+                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-white text-black font-bold text-[10px] py-1 px-2 rounded-lg transition-opacity pointer-events-none z-10 whitespace-nowrap shadow-xl">
+                      {h}% ret.
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="flex justify-between mt-2 text-xs text-white/40">
+              <div className="flex justify-between mt-3 text-[10px] font-medium text-white/40 uppercase tracking-wider">
                 <span>0:00</span>
                 <span>Drop</span>
                 <span>End</span>
               </div>
             </div>
 
+            {/* Audience Demographics */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-5 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md">
+                <div className="flex items-center gap-2 mb-4">
+                  <Clock size={16} className="text-primary" />
+                  <h3 className="font-semibold text-sm text-white">Peak Hours</h3>
+                </div>
+                <p className="text-lg font-display font-bold text-white mb-1">10PM - 2AM</p>
+                <p className="text-xs text-white/50">Local time</p>
+              </div>
+              
+              <div className="p-5 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md">
+                <div className="flex items-center gap-2 mb-4">
+                  <Music size={16} className="text-primary" />
+                  <h3 className="font-semibold text-sm text-white">Top Moods</h3>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-xs font-medium bg-white/10 px-2 py-1 rounded-md text-white">Focus</span>
+                  <span className="text-xs font-medium bg-white/10 px-2 py-1 rounded-md text-white">Study</span>
+                </div>
+              </div>
+            </div>
+
             {/* Recent Uploads */}
-            <div className="mt-8">
-              <h3 className="text-lg font-display font-semibold mb-4">Recent Tracks</h3>
+            <div className="pt-4">
+              <h3 className="text-sm font-medium text-white/60 mb-4 uppercase tracking-wider">Track Performance</h3>
               <div className="space-y-3">
                 {dummyAnalytics.recentUploads.map((track, i) => (
-                  <div key={i} className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded bg-white/10 flex items-center justify-center">
-                        <PlayCircle size={20} className="text-white/50" />
+                  <div key={i} className="flex items-center justify-between p-4 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 transition-colors cursor-pointer">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center relative overflow-hidden group">
+                        <PlayCircle size={24} className="text-white/50 group-hover:text-white transition-colors" />
                       </div>
                       <div>
-                        <p className="font-medium text-sm">{track.title}</p>
+                        <p className="font-semibold text-white">{track.title}</p>
                         <p className="text-xs text-white/50">{track.date}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium text-sm text-primary">{track.plays.toLocaleString()}</p>
-                      <p className="text-xs text-white/50">plays</p>
+                      <p className="font-bold text-primary">{track.plays.toLocaleString()}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-white/40 mt-0.5">Plays</p>
                     </div>
                   </div>
                 ))}
@@ -305,14 +348,21 @@ export default function ArtistDashboard() {
   );
 }
 
-function StatCard({ icon, label, value, isSmall = false }: { icon: React.ReactNode, label: string, value: string, isSmall?: boolean }) {
+function StatCard({ icon, label, value, trend, isSmall = false }: { icon: React.ReactNode, label: string, value: string, trend?: string, isSmall?: boolean }) {
   return (
-    <div className="p-4 rounded-2xl border border-white/5 bg-white/5 backdrop-blur-md hover:bg-white/10 transition-colors">
-      <div className="text-primary mb-3">
-        {icon}
+    <div className={`p-5 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md hover:bg-white/10 transition-colors ${isSmall ? 'p-4 rounded-2xl' : ''}`}>
+      <div className="flex items-start justify-between mb-3">
+        <div className={`text-primary ${isSmall ? 'scale-75 origin-top-left' : ''}`}>
+          {icon}
+        </div>
+        {trend && (
+          <span className="text-[10px] font-bold text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">
+            {trend}
+          </span>
+        )}
       </div>
-      <p className="text-sm text-white/50 mb-1">{label}</p>
-      <p className={`font-display font-semibold ${isSmall ? 'text-xl' : 'text-2xl'} text-white`}>{value}</p>
+      <p className="text-xs text-white/50 mb-1 font-medium">{label}</p>
+      <p className={`font-display font-bold ${isSmall ? 'text-lg' : 'text-3xl'} text-white`}>{value}</p>
     </div>
   );
 }
