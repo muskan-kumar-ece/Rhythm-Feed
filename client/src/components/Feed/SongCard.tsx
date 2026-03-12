@@ -40,8 +40,10 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
     };
   }, [song.audioUrl, isActive, shouldPreload]);
   
-  // Share to moment state
+  // Share to moment & comments state
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [newComment, setNewComment] = useState("");
   
   const progressRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
@@ -202,6 +204,11 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
     setIsPlaying(false); // Pause while sharing
   };
 
+  const handleCommentClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowCommentsModal(true);
+  };
+
   const restartSong = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (audioRef.current) {
@@ -308,16 +315,19 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
               <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
                 <Heart size={26} className={cn("transition-colors", isLiked ? "fill-destructive text-destructive" : "text-white")} />
               </div>
-              <span className="text-xs font-medium text-white/80">
+              <span className="text-xs font-medium text-white/80 drop-shadow-md">
                 {isLiked ? (song.likes + 1).toLocaleString() : song.likes.toLocaleString()}
               </span>
             </button>
 
-            <button className="flex flex-col items-center gap-1 group/btn" onClick={(e) => e.stopPropagation()}>
+            <button 
+              onClick={handleCommentClick}
+              className="flex flex-col items-center gap-1 group/btn"
+            >
               <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
                 <MessageCircle size={26} className="text-white" />
               </div>
-              <span className="text-xs font-medium text-white/80">{song.comments}</span>
+              <span className="text-xs font-medium text-white/80 drop-shadow-md">{song.comments.toLocaleString()}</span>
             </button>
 
             <button 
@@ -327,7 +337,7 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
               <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
                 <Bookmark size={26} className={cn("transition-colors", isSaved ? "fill-primary text-primary" : "text-white")} />
               </div>
-              <span className="text-xs font-medium text-white/80">{song.saves}</span>
+              <span className="text-xs font-medium text-white/80 drop-shadow-md">{song.saves.toLocaleString()}</span>
             </button>
 
             <button 
@@ -337,7 +347,7 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
               <div className="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md flex items-center justify-center border border-primary/50 group-hover/btn:bg-primary/40 transition-colors">
                 <Quote size={24} className="text-primary-foreground" />
               </div>
-              <span className="text-xs font-medium text-primary">Moment</span>
+              <span className="text-xs font-medium text-primary drop-shadow-md">Moment</span>
             </button>
 
             {/* Rotating Record */}
@@ -395,12 +405,13 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
 
             <textarea 
               placeholder="Add a caption..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary mb-6 resize-none h-24"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary mb-6 resize-none h-24 text-white"
             />
 
             <div className="flex gap-4">
               <button 
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setShowShareModal(false);
                   setIsPlaying(true);
                 }}
@@ -409,7 +420,8 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
                 Cancel
               </button>
               <button 
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   // In a real app, this would dispatch to the Moments feed
                   setShowShareModal(false);
                   setIsPlaying(true);
@@ -419,6 +431,111 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
               >
                 Post Moment
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Comments Modal Overlay */}
+      {showCommentsModal && (
+        <div 
+          className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-300 pb-16"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowCommentsModal(false);
+          }}
+        >
+          <div 
+            className="bg-background border-t border-white/10 rounded-t-3xl h-[70vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-1/2 duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-10 rounded-t-3xl">
+              <h3 className="font-display font-bold text-white">Comments <span className="text-white/50 text-sm font-normal ml-1">{song.comments.toLocaleString()}</span></h3>
+              <button 
+                onClick={() => setShowCommentsModal(false)}
+                className="p-2 rounded-full hover:bg-white/10 text-white/70 transition-colors"
+              >
+                <Plus className="rotate-45" size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+              {/* Dummy Comments */}
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-white/20 overflow-hidden flex-shrink-0">
+                  <img src="https://i.pravatar.cc/150?u=a1" alt="User" className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold text-white/90">Alex</span>
+                    <span className="text-xs text-white/40">2h</span>
+                  </div>
+                  <p className="text-sm text-white/80">This beat drop is absolutely insane 🔥</p>
+                  <div className="flex items-center gap-4 mt-2">
+                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1">
+                      <Heart size={12} /> 124
+                    </button>
+                    <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-white/20 overflow-hidden flex-shrink-0">
+                  <img src="https://i.pravatar.cc/150?u=b2" alt="User" className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold text-white/90">Sarah</span>
+                    <span className="text-xs text-white/40">5h</span>
+                  </div>
+                  <p className="text-sm text-white/80">Been listening to this on repeat all day.</p>
+                  <div className="flex items-center gap-4 mt-2">
+                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1">
+                      <Heart size={12} /> 89
+                    </button>
+                    <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-white/20 overflow-hidden flex-shrink-0">
+                  <img src="https://i.pravatar.cc/150?u=c3" alt="User" className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold text-white/90">Mike</span>
+                    <span className="text-xs text-white/40">1d</span>
+                  </div>
+                  <p className="text-sm text-white/80">Does anyone know what synth they used for the lead?</p>
+                  <div className="flex items-center gap-4 mt-2">
+                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1">
+                      <Heart size={12} /> 42
+                    </button>
+                    <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-white/10 bg-background sticky bottom-0">
+              <div className="flex items-center gap-2 relative">
+                <input 
+                  type="text"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Add a comment..."
+                  className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-primary text-white pr-10 transition-colors"
+                />
+                <button 
+                  disabled={!newComment.trim()}
+                  onClick={() => setNewComment("")}
+                  className="absolute right-2 p-1.5 rounded-full bg-primary text-primary-foreground disabled:opacity-50 disabled:bg-white/10 disabled:text-white/30 transition-all"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
