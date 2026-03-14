@@ -8,6 +8,7 @@ import Feed from "@/pages/Feed";
 import ArtistPortal from "@/pages/ArtistPortal";
 import Moments from "@/pages/Moments";
 import Profile from "@/pages/Profile";
+import Search from "@/pages/Search";
 import Navigation from "@/components/Navigation";
 
 function Router() {
@@ -16,6 +17,7 @@ function Router() {
       <main className="flex-1 w-full max-w-md mx-auto relative bg-black shadow-2xl overflow-hidden shadow-white/5 border-x border-white/5">
         <Switch>
           <Route path="/" component={Feed} />
+          <Route path="/search" component={Search} />
           <Route path="/artist/:tab?" component={ArtistPortal} />
           <Route path="/moments" component={Moments} />
           <Route path="/profile" component={Profile} />
