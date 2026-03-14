@@ -45,6 +45,9 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [newComment, setNewComment] = useState("");
   
+  // Like animation state
+  const [showHeartAnimation, setShowHeartAnimation] = useState(false);
+  
   const progressRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
 
@@ -186,8 +189,36 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
     }
   }, [isActive]);
 
+  // Double tap to like logic
+  const [lastTapTime, setLastTapTime] = useState(0);
+
+  const handleContainerClick = (e: React.MouseEvent) => {
+    if (showShareModal || showCommentsModal) return;
+    
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300; // ms
+    
+    if (now - lastTapTime < DOUBLE_TAP_DELAY) {
+      // Double tap detected
+      if (!isLiked) {
+        setIsLiked(true);
+        // Trigger animation
+        setShowHeartAnimation(true);
+        setTimeout(() => setShowHeartAnimation(false), 1000);
+      }
+    } else {
+      // Single tap (play/pause) - wait a tiny bit to make sure it's not a double tap
+      setTimeout(() => {
+        if (Date.now() - now >= DOUBLE_TAP_DELAY) {
+          togglePlay(e);
+        }
+      }, DOUBLE_TAP_DELAY);
+    }
+    
+    setLastTapTime(now);
+  };
+
   const togglePlay = (e: React.MouseEvent) => {
-    if (showShareModal) return;
     e.stopPropagation();
     
     // Track pause event
@@ -232,15 +263,47 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
       <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-black/90" />
 
       {/* Main Content Area */}
-      <div className="relative flex-1 flex flex-col justify-end pb-24 px-4 z-10" onClick={togglePlay}>
+      <div className="relative flex-1 flex flex-col justify-end pb-24 px-4 z-10" onClick={handleContainerClick}>
         
         {/* Play/Pause Indicator (Fades out) */}
         <div className={cn(
           "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/40 backdrop-blur-md rounded-full p-6 transition-all duration-300",
           isPlaying ? "opacity-0 scale-150 pointer-events-none" : "opacity-100 scale-100",
-          showShareModal && "hidden"
+          (showShareModal || showCommentsModal || showHeartAnimation) && "hidden"
         )}>
           <Play fill="white" size={48} className="ml-2 text-white" />
+        </div>
+
+        {/* Double Tap Heart Animation */}
+        <div className={cn(
+          "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none transition-all duration-700 ease-out z-50",
+          showHeartAnimation ? "opacity-100 scale-150 translate-y-[-60%]" : "opacity-0 scale-50"
+        )}>
+          <Heart fill="url(#heart-gradient)" stroke="none" size={120} className="drop-shadow-[0_0_30px_rgba(255,0,100,0.8)]" />
+          <svg width="0" height="0">
+            <linearGradient id="heart-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop stopColor="#ff007f" offset="0%" />
+              <stop stopColor="#ff00ff" offset="100%" />
+            </linearGradient>
+          </svg>
+        </div>
+
+        {/* Audio Visualizer (Shows when playing) */}
+        <div className={cn(
+          "absolute bottom-48 left-4 right-16 h-12 flex items-end gap-1 opacity-0 transition-opacity duration-500",
+          isPlaying && "opacity-100"
+        )}>
+          {[...Array(12)].map((_, i) => (
+            <div 
+              key={i} 
+              className="w-1.5 bg-primary/80 rounded-t-sm"
+              style={{
+                height: isPlaying ? `${Math.max(10, Math.random() * 100)}%` : '10%',
+                animation: isPlaying ? `equalizer ${0.5 + Math.random() * 0.5}s ease-in-out infinite alternate` : 'none',
+                animationDelay: `${i * 0.1}s`
+              }}
+            />
+          ))}
         </div>
 
         <div className="flex items-end justify-between w-full">
