@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import SongCard from "@/components/Feed/SongCard";
 import { Song } from "@/lib/dummyData";
 import { generateFeedSegment, generateMoodFeedSegment } from "@/lib/recommendation";
-import { Sparkles, Activity, Map, Disc } from "lucide-react";
+import { Sparkles, Activity, Map, Disc, Music, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MOODS = ["For You", "Focus", "Night Drive", "Gym", "Study", "Chill", "Sad", "Hype"];
@@ -14,6 +14,9 @@ export default function Feed() {
   
   // State for infinite feed
   const [feedItems, setFeedItems] = useState<Song[]>([]);
+  
+  // AI DJ Greeting state
+  const [showGreeting, setShowGreeting] = useState(true);
 
   // Initialize or reset feed when mood changes
   useEffect(() => {
@@ -26,6 +29,12 @@ export default function Feed() {
       setFeedItems(generateFeedSegment());
     } else {
       setFeedItems(generateMoodFeedSegment(selectedMood));
+    }
+    
+    // Hide greeting after 3 seconds when starting up
+    if (selectedMood === "For You" && feedItems.length === 0) {
+      const timer = setTimeout(() => setShowGreeting(false), 3500);
+      return () => clearTimeout(timer);
     }
   }, [selectedMood]);
 
@@ -41,6 +50,7 @@ export default function Feed() {
     
     if (index !== activeIndex && index >= 0 && index < feedItems.length) {
       setActiveIndex(index);
+      if (showGreeting) setShowGreeting(false); // hide greeting on scroll
     }
     
     // Infinite loading: append more curated items when reaching the end
@@ -51,11 +61,18 @@ export default function Feed() {
         setFeedItems(prev => [...prev, ...generateMoodFeedSegment(selectedMood)]);
       }
     }
-  }, [activeIndex, feedItems.length, selectedMood]);
+  }, [activeIndex, feedItems.length, selectedMood, showGreeting]);
 
   if (feedItems.length === 0) {
     return <div className="h-[100dvh] w-full bg-black flex items-center justify-center text-white/50">Loading feed...</div>;
   }
+
+  // Get time of day for dynamic greeting
+  const hour = new Date().getHours();
+  let timeOfDay = "Night";
+  if (hour >= 5 && hour < 12) timeOfDay = "Morning";
+  else if (hour >= 12 && hour < 17) timeOfDay = "Afternoon";
+  else if (hour >= 17 && hour < 21) timeOfDay = "Evening";
 
   return (
     <div className="relative h-[100dvh] w-full bg-black">
@@ -78,6 +95,25 @@ export default function Feed() {
               )}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* AI DJ Greeting Overlay */}
+      <div className={cn(
+        "absolute top-32 left-4 right-4 z-40 transition-all duration-1000 pointer-events-none flex flex-col items-center",
+        showGreeting ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-8"
+      )}>
+        <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-2xl flex items-center gap-4 max-w-sm w-full mx-auto">
+          <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0 border border-primary/50 relative overflow-hidden">
+            <div className="absolute inset-0 bg-primary/20 animate-pulse" />
+            <Bot size={24} className="text-primary relative z-10" />
+          </div>
+          <div>
+            <p className="text-primary text-xs font-bold uppercase tracking-wider mb-0.5">AI Personal DJ</p>
+            <p className="text-white text-sm font-medium leading-tight">
+              Good {timeOfDay}! Here are songs perfect for your current vibe.
+            </p>
+          </div>
         </div>
       </div>
 
