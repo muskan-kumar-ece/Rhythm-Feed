@@ -129,12 +129,50 @@ export function generateFeedSegment(): Song[] {
 
   const hasHistory = Object.keys(moodScores).length > 0;
   
-  const personalizedPool = [...dummySongs].sort((a, b) => {
-    if (!hasHistory) return calculateViralScore(b) - calculateViralScore(a);
-    const scoreA = calculateTasteMatchScore(a, moodScores);
-    const scoreB = calculateTasteMatchScore(b, moodScores);
-    return scoreB - scoreA;
-  });
+  // Calculate dynamic ranking score for every song to build the personalized pool
+  const personalizedPool = [...dummySongs].map(song => {
+    let score = 0;
+    
+    if (hasHistory) {
+      // 1. Taste Profile Similarity (0-100)
+      let tasteMatch = 0;
+      song.features.mood.forEach(m => {
+        if (moodScores[m]) tasteMatch += moodScores[m] * 5; 
+      });
+      score += Math.min(tasteMatch, 100) * 0.4; // 40% weight
+    }
+
+    // 2. Engagement Metrics (0-100)
+    const viral = calculateViralScore(song);
+    score += viral * 0.3; // 30% weight
+    
+    // 3. Trending Momentum (0-100)
+    const trending = calculateTrendingScore(song);
+    score += Math.min(trending, 100) * 0.2; // 20% weight
+
+    // 4. Time of Day Context (0-100)
+    const hour = new Date().getHours();
+    let timeBonus = 0;
+    const isNight = hour >= 21 || hour < 5;
+    const isMorning = hour >= 5 && hour < 12;
+    const isAfternoon = hour >= 12 && hour < 17;
+    const isEvening = hour >= 17 && hour < 21;
+
+    if (isNight && (song.features.mood.includes('Night Drive') || song.features.mood.includes('Chill') || song.features.mood.includes('Sad'))) {
+      timeBonus = 100;
+    } else if (isMorning && (song.features.mood.includes('Focus') || song.features.mood.includes('Study'))) {
+      timeBonus = 100;
+    } else if (isAfternoon && (song.features.mood.includes('Hype') || song.features.energy === 'high')) {
+      timeBonus = 100;
+    } else if (isEvening && song.features.energy === 'medium') {
+      timeBonus = 100;
+    }
+    score += timeBonus * 0.1; // 10% weight
+
+    return { song, score };
+  })
+  .sort((a, b) => b.score - a.score)
+  .map(item => item.song);
 
   const randomPool = [...dummySongs];
 
@@ -155,11 +193,13 @@ export function generateFeedSegment(): Song[] {
   // 3. Construct a blended segment (6 songs to include rapid trending)
   const segment: Song[] = [];
   
-  segment.push(pickFromPool(personalizedPool, 'personal1', true)); 
-  segment.push(pickFromPool(viralPool, 'viral', true)); // High overall viral score
+  // Use the dynamically ranked personalized pool as the primary driver, 
+  // but maintain diversity by pulling from other specific pools.
+  segment.push(pickFromPool(personalizedPool, 'rank-1', true)); 
+  segment.push(pickFromPool(personalizedPool, 'rank-2', true)); 
   segment.push(pickFromPool(rapidTrendingPool, 'rapid-trend', true)); // Actively blowing up right now
-  segment.push(pickFromPool(randomPool, 'discover'));
-  segment.push(pickFromPool(personalizedPool, 'personal2', true));
+  segment.push(pickFromPool(randomPool, 'discover')); // Prevent filter bubbles
+  segment.push(pickFromPool(personalizedPool, 'rank-3', true));
   segment.push(pickFromPool(newPool, 'new'));
 
   return segment;
