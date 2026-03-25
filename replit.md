@@ -12,7 +12,7 @@ A mobile-style vertical music discovery web app (Resso/TikTok-inspired) with an 
 
 ```
 client/src/
-  pages/         – Feed, Discover, Moments, Profile, ArtistDashboard
+  pages/         – Feed, Trending, Moments, Profile, ArtistPortal, AdminDashboard
   components/    – Feed/SongCard (main feed card), Navigation
   lib/           – api.ts, recommendation.ts, tracking.ts, dummyData.ts
 
@@ -153,6 +153,14 @@ All routes under `/api`:
 | GET | `/api/behavior` | Demo user's behavior history |
 | GET | `/api/user/profile` | Demo user profile |
 | GET | `/api/artist/songs` | Songs uploaded by demo user |
+| GET | `/api/trending/viral` | Top 10 songs by recent 24h engagement |
+| GET | `/api/trending/fastest` | Top 10 fastest-growing songs (recent/total play ratio) |
+| GET | `/api/trending/moments-songs` | Songs most frequently featured in Moments |
+| GET | `/api/songs/:id/moments` | All Moments created for a specific song |
+| POST | `/api/ai-dj/next` | Next song for Continuous DJ Mode (session-aware) |
+| GET | `/api/admin/stats` | Platform-wide analytics (DAU, skip/completion rates, etc.) |
+| GET | `/api/admin/daily-activity` | Daily play/skip/completion/like counts for last 14 days |
+| GET | `/api/admin/retention` | User retention cohort data (Day 1 / Day 7) |
 
 ## First-Time Onboarding Flow
 

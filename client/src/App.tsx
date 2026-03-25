@@ -9,6 +9,8 @@ import ArtistPortal from "@/pages/ArtistPortal";
 import Moments from "@/pages/Moments";
 import Profile from "@/pages/Profile";
 import Search from "@/pages/Search";
+import Trending from "@/pages/Trending";
+import AdminDashboard from "@/pages/AdminDashboard";
 import Navigation from "@/components/Navigation";
 
 function Router() {
@@ -18,9 +20,11 @@ function Router() {
         <Switch>
           <Route path="/" component={Feed} />
           <Route path="/search" component={Search} />
+          <Route path="/trending" component={Trending} />
           <Route path="/artist/:tab?" component={ArtistPortal} />
           <Route path="/moments" component={Moments} />
           <Route path="/profile" component={Profile} />
+          <Route path="/admin" component={AdminDashboard} />
           
           <Route component={NotFound} />
         </Switch>

@@ -67,6 +67,17 @@ export interface IStorage {
   // Moments — extended
   getTrendingMoments(): Promise<(Moment & { user: User; song: Song })[]>;
   getSongsFromMoments(): Promise<Song[]>;
+  getSongMoments(songId: string): Promise<(Moment & { user: User })[]>;
+
+  // Trending
+  getTrendingViral(limit?: number): Promise<Song[]>;
+  getTrendingFastest(limit?: number): Promise<Song[]>;
+  getTrendingMomentSongs(limit?: number): Promise<(Song & { momentCount: number; topLyricLine: string })[]>;
+
+  // Admin analytics
+  getAdminStats(): Promise<{ dau: number; totalPlays: number; skipRate: number; completionRate: number; avgDuration: number; songsPerSession: number }>;
+  getAdminDailyActivity(days?: number): Promise<{ date: string; plays: number; skips: number; completions: number; likes: number }[]>;
+  getAdminRetentionData(): Promise<{ totalUsers: number; day1Retained: number; day7Retained: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -315,6 +326,154 @@ export class DatabaseStorage implements IStorage {
       .orderBy(moments.songId, sql`${moments.likes} * 2 + ${moments.comments} DESC`)
       .limit(10);
     return rows.map(r => r.song);
+  }
+
+  /** All moments for a single song, ordered by engagement. */
+  async getSongMoments(songId: string): Promise<(Moment & { user: User })[]> {
+    const rows = await db
+      .select({ moment: moments, user: users })
+      .from(moments)
+      .innerJoin(users, eq(moments.userId, users.id))
+      .where(eq(moments.songId, songId))
+      .orderBy(sql`${moments.likes} * 2 + ${moments.comments} DESC`)
+      .limit(30);
+    return rows.map(r => ({ ...r.moment, user: r.user }));
+  }
+
+  // ── Trending ────────────────────────────────────────────────────────────────
+
+  /** Viral songs: highest recent 24h engagement score. */
+  async getTrendingViral(limit = 10): Promise<Song[]> {
+    return db.select().from(songs)
+      .orderBy(sql`
+        COALESCE((${songs.features}->'popularity'->'recent24h'->>'plays')::int, 0) +
+        COALESCE((${songs.features}->'popularity'->'recent24h'->>'likes')::int, 0) * 2 +
+        COALESCE((${songs.features}->'popularity'->'recent24h'->>'replays')::int, 0) * 3 +
+        COALESCE((${songs.features}->'popularity'->'recent24h'->>'comments')::int, 0) DESC
+      `)
+      .limit(limit);
+  }
+
+  /** Fastest growing: highest ratio of recent24h plays to total plays. */
+  async getTrendingFastest(limit = 10): Promise<Song[]> {
+    return db.select().from(songs)
+      .orderBy(sql`
+        COALESCE((${songs.features}->'popularity'->'recent24h'->>'plays')::float, 0) /
+        GREATEST(COALESCE((${songs.features}->'popularity'->>'plays')::float, 1), 1) DESC
+      `)
+      .limit(limit);
+  }
+
+  /** Songs trending in Moments: most moments created, highest engagement. */
+  async getTrendingMomentSongs(limit = 10): Promise<(Song & { momentCount: number; topLyricLine: string })[]> {
+    const rows = await db.execute(sql`
+      SELECT
+        s.*,
+        COUNT(m.id)::int AS moment_count,
+        COALESCE(
+          (SELECT m2.lyric_line FROM moments m2
+           WHERE m2.song_id = s.id
+           ORDER BY m2.likes DESC LIMIT 1),
+          ''
+        ) AS top_lyric_line
+      FROM songs s
+      LEFT JOIN moments m ON m.song_id = s.id
+      GROUP BY s.id
+      HAVING COUNT(m.id) > 0
+      ORDER BY COUNT(m.id) DESC, COALESCE(SUM(m.likes + m.comments), 0) DESC
+      LIMIT ${limit}
+    `);
+    return (rows.rows as Record<string, unknown>[]).map(r => ({
+      id: r.id as string,
+      title: r.title as string,
+      artist: r.artist as string,
+      coverUrl: r.cover_url as string,
+      audioUrl: r.audio_url as string,
+      mood: r.mood as string,
+      likes: r.likes as number,
+      comments: r.comments as number,
+      saves: r.saves as number,
+      shares: r.shares as number,
+      lyrics: r.lyrics as Song["lyrics"],
+      features: r.features as Song["features"],
+      uploadedBy: r.uploaded_by as string | null,
+      createdAt: r.created_at as Date,
+      distributionScore: r.distribution_score as number,
+      distributionPhase: r.distribution_phase as string,
+      momentCount: r.moment_count as number,
+      topLyricLine: r.top_lyric_line as string,
+    }));
+  }
+
+  // ── Admin Analytics ─────────────────────────────────────────────────────────
+
+  async getAdminStats(): Promise<{
+    dau: number; totalPlays: number; skipRate: number;
+    completionRate: number; avgDuration: number; songsPerSession: number;
+  }> {
+    const [row] = await db.select({
+      dau:             sql<number>`COUNT(DISTINCT CASE WHEN ${behaviorLogs.createdAt} > NOW() - INTERVAL '24 hours' THEN ${behaviorLogs.userId} END)::int`,
+      totalPlays:      sql<number>`COUNT(*)::int`,
+      skipRate:        sql<number>`ROUND(SUM(CASE WHEN ${behaviorLogs.skipped} THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100, 1)`,
+      completionRate:  sql<number>`ROUND(SUM(CASE WHEN NOT ${behaviorLogs.skipped} THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100, 1)`,
+      avgDuration:     sql<number>`ROUND(AVG(${behaviorLogs.durationSeconds})::numeric, 1)`,
+      distinctUsers:   sql<number>`NULLIF(COUNT(DISTINCT ${behaviorLogs.userId}), 0)`,
+    }).from(behaviorLogs);
+
+    const songsPerSession = row.totalPlays && row.distinctUsers
+      ? parseFloat((row.totalPlays / row.distinctUsers).toFixed(1))
+      : 0;
+
+    return {
+      dau:            row.dau            ?? 0,
+      totalPlays:     row.totalPlays     ?? 0,
+      skipRate:       row.skipRate       ?? 0,
+      completionRate: row.completionRate ?? 0,
+      avgDuration:    row.avgDuration    ?? 0,
+      songsPerSession,
+    };
+  }
+
+  async getAdminDailyActivity(days = 14): Promise<{ date: string; plays: number; skips: number; completions: number; likes: number }[]> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const rows = await db.select({
+      date:        sql<string>`DATE(${behaviorLogs.createdAt})::text`,
+      plays:       sql<number>`COUNT(*)::int`,
+      skips:       sql<number>`SUM(CASE WHEN ${behaviorLogs.skipped} THEN 1 ELSE 0 END)::int`,
+      completions: sql<number>`SUM(CASE WHEN NOT ${behaviorLogs.skipped} THEN 1 ELSE 0 END)::int`,
+      likes:       sql<number>`SUM(CASE WHEN ${behaviorLogs.liked} THEN 1 ELSE 0 END)::int`,
+    })
+    .from(behaviorLogs)
+    .where(gte(behaviorLogs.createdAt, cutoff))
+    .groupBy(sql`DATE(${behaviorLogs.createdAt})`)
+    .orderBy(sql`DATE(${behaviorLogs.createdAt})`);
+    return rows;
+  }
+
+  async getAdminRetentionData(): Promise<{ totalUsers: number; day1Retained: number; day7Retained: number }> {
+    const rows = await db.execute(sql`
+      WITH first_days AS (
+        SELECT user_id, MIN(DATE(created_at)) AS first_day
+        FROM behavior_logs GROUP BY user_id
+      )
+      SELECT
+        COUNT(DISTINCT fd.user_id)::int AS total_users,
+        COUNT(DISTINCT CASE WHEN EXISTS (
+          SELECT 1 FROM behavior_logs b WHERE b.user_id = fd.user_id
+          AND DATE(b.created_at) = fd.first_day + INTERVAL '1 day'
+        ) THEN fd.user_id END)::int AS day1_retained,
+        COUNT(DISTINCT CASE WHEN EXISTS (
+          SELECT 1 FROM behavior_logs b WHERE b.user_id = fd.user_id
+          AND DATE(b.created_at) BETWEEN fd.first_day + INTERVAL '6 days' AND fd.first_day + INTERVAL '8 days'
+        ) THEN fd.user_id END)::int AS day7_retained
+      FROM first_days fd
+    `);
+    const r = rows.rows[0] as Record<string, unknown> | undefined;
+    return {
+      totalUsers:    (r?.total_users    as number) ?? 0,
+      day1Retained:  (r?.day1_retained  as number) ?? 0,
+      day7Retained:  (r?.day7_retained  as number) ?? 0,
+    };
   }
 }
 

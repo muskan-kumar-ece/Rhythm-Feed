@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote } from "lucide-react";
+import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2 } from "lucide-react";
+import { Link } from "wouter";
 import { api, ApiSong } from "@/lib/api";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,11 @@ export default function Profile() {
       {/* Profile Header */}
       <div className="relative pt-12 pb-6 px-6 glass rounded-b-[2.5rem]">
         <div className="absolute top-6 right-6 flex gap-4">
+          <Link href="/admin">
+            <a className="w-10 h-10 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center hover:bg-primary/20 transition-colors" title="Platform Analytics">
+              <BarChart2 size={18} className="text-primary" />
+            </a>
+          </Link>
           <button className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
              <Settings size={20} className="text-white" />
           </button>

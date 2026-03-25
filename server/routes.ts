@@ -417,5 +417,70 @@ export async function registerRoutes(
     res.json(stats);
   });
 
+  // ── Trending ─────────────────────────────────────────────────────────────
+  app.get("/api/trending/viral", async (_req: Request, res: Response) => {
+    const songs = await storage.getTrendingViral(10);
+    res.json(songs);
+  });
+
+  app.get("/api/trending/fastest", async (_req: Request, res: Response) => {
+    const songs = await storage.getTrendingFastest(10);
+    res.json(songs);
+  });
+
+  app.get("/api/trending/moments-songs", async (_req: Request, res: Response) => {
+    const songs = await storage.getTrendingMomentSongs(10);
+    res.json(songs);
+  });
+
+  // ── Song Moments ───────────────────────────────────────────────────────────
+  app.get("/api/songs/:id/moments", async (req: Request, res: Response) => {
+    const moments = await storage.getSongMoments(req.params.id);
+    res.json(moments);
+  });
+
+  // ── AI DJ — Next Song ─────────────────────────────────────────────────────
+  app.post("/api/ai-dj/next", async (req: Request, res: Response) => {
+    const { excludeIds = [], sessionCtx } = req.body as { excludeIds?: string[]; sessionCtx?: Parameters<typeof rankSongsForUser>[2] };
+    const [allSongs, logs] = await Promise.all([
+      storage.getSongs(),
+      storage.getUserBehaviorLogs(DEMO_USER_ID),
+    ]);
+
+    const ranked = rankSongsForUser(allSongs, logs, sessionCtx ?? undefined);
+    const candidates = ranked.filter(s => !excludeIds.includes(s.id));
+    const next = candidates[0];
+
+    if (!next) return res.status(404).json({ message: "No songs available" });
+
+    const moods: string[] = next.features?.mood ?? [];
+    const genres: string[] = next.features?.genre ?? [];
+    const sessionMoods: string[] = (sessionCtx as { sessionMoods?: string[] } | undefined)?.sessionMoods ?? [];
+    const matchedMood = moods.find(m => sessionMoods.map(x => x.toLowerCase()).includes(m.toLowerCase()));
+    const reason = matchedMood
+      ? `Continuing your ${matchedMood} session`
+      : genres[0]
+        ? `Selected for your ${genres[0]} taste`
+        : "Picked for your vibe";
+
+    res.json({ song: next, reason });
+  });
+
+  // ── Admin Analytics ───────────────────────────────────────────────────────
+  app.get("/api/admin/stats", async (_req: Request, res: Response) => {
+    const stats = await storage.getAdminStats();
+    res.json(stats);
+  });
+
+  app.get("/api/admin/daily-activity", async (_req: Request, res: Response) => {
+    const data = await storage.getAdminDailyActivity(14);
+    res.json(data);
+  });
+
+  app.get("/api/admin/retention", async (_req: Request, res: Response) => {
+    const data = await storage.getAdminRetentionData();
+    res.json(data);
+  });
+
   return httpServer;
 }

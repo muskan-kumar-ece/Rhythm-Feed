@@ -76,6 +76,31 @@ export type ApiMoment = {
   song: ApiSong;
 };
 
+export type ApiTrendingMomentSong = ApiSong & { momentCount: number; topLyricLine: string };
+
+export type ApiAdminStats = {
+  dau: number;
+  totalPlays: number;
+  skipRate: number;
+  completionRate: number;
+  avgDuration: number;
+  songsPerSession: number;
+};
+
+export type ApiAdminDailyActivity = {
+  date: string;
+  plays: number;
+  skips: number;
+  completions: number;
+  likes: number;
+};
+
+export type ApiAdminRetention = {
+  totalUsers: number;
+  day1Retained: number;
+  day7Retained: number;
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -164,4 +189,25 @@ export const api = {
     request<{ hour: number; plays: number }[]>("/api/analytics/hourly"),
   getListenerGrowth: () =>
     request<{ date: string; plays: number }[]>("/api/analytics/growth"),
+
+  // Trending
+  getTrendingViral: () => request<ApiSong[]>("/api/trending/viral"),
+  getTrendingFastest: () => request<ApiSong[]>("/api/trending/fastest"),
+  getTrendingMomentSongs: () => request<ApiTrendingMomentSong[]>("/api/trending/moments-songs"),
+
+  // Song moments
+  getSongMoments: (songId: string) =>
+    request<(ApiMoment & { user: ApiUser })[]>(`/api/songs/${songId}/moments`),
+
+  // AI DJ — next song
+  getDJNextSong: (data: { excludeIds: string[]; sessionCtx?: SessionContext | null }) =>
+    request<{ song: ApiSong; reason: string }>("/api/ai-dj/next", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  // Admin analytics
+  getAdminStats: () => request<ApiAdminStats>("/api/admin/stats"),
+  getAdminDailyActivity: () => request<ApiAdminDailyActivity[]>("/api/admin/daily-activity"),
+  getAdminRetention: () => request<ApiAdminRetention>("/api/admin/retention"),
 };

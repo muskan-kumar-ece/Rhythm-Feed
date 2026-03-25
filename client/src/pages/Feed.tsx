@@ -18,7 +18,7 @@ import {
   buildColdStartContext,
   type OnboardingPrefs,
 } from "@/lib/session";
-import { Bot, Sparkles } from "lucide-react";
+import { Bot, Sparkles, RadioTower } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MOODS = ["For You", "Focus", "Night Drive", "Gym", "Study", "Chill", "Sad", "Hype"];
@@ -57,6 +57,21 @@ export default function Feed() {
     setShowDJIntro(true); // Always show DJ intro right after onboarding
   }, []);
 
+  // ── Continuous DJ Mode ───────────────────────────────────────────────────────
+  const [isDJMode, setIsDJMode] = useState(false);
+  const [djSelectingMsg, setDjSelectingMsg] = useState<string | null>(null);
+
+  // Trending-in-Moments song IDs for badge display
+  const { data: momentTrendingSongs = [] } = useQuery({
+    queryKey: ["trending-moment-songs-feed"],
+    queryFn: () => api.getTrendingMomentSongs(),
+    staleTime: 5 * 60_000,
+  });
+  const momentTrendingIds = new Set(momentTrendingSongs.map(s => {
+    const base = s.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+    return base;
+  }));
+
   // ── Session awareness ────────────────────────────────────────────────────────
   const [sessionVersion, setSessionVersion] = useState(0);
   const sessionCountRef                     = useRef(0);
@@ -69,6 +84,27 @@ export default function Feed() {
       setSessionVersion(v => v + 1);
     }
   }, [queryClient]);
+
+  // ── DJ Mode auto-advance ──────────────────────────────────────────────────
+  const handleSongEnd = useCallback(() => {
+    if (!containerRef.current) return;
+    const nextIndex = activeIndex + 1;
+
+    // Expand feed if needed
+    if (nextIndex >= feedItems.length - 1) {
+      setFeedItems(prev => [...prev, ...generateFeedSegment()]);
+    }
+
+    // Brief "selecting" indicator
+    setDjSelectingMsg("AI DJ selecting your next track…");
+    setTimeout(() => setDjSelectingMsg(null), 900);
+
+    // Smooth scroll to next song
+    setTimeout(() => {
+      if (!containerRef.current) return;
+      containerRef.current.scrollTo({ top: (activeIndex + 1) * window.innerHeight, behavior: "smooth" });
+    }, 300);
+  }, [activeIndex, feedItems.length]);
 
   // ── Ranked songs query ───────────────────────────────────────────────────────
   const { data: allSongs, isLoading } = useQuery({
@@ -223,6 +259,23 @@ export default function Feed() {
             </button>
           ))}
         </div>
+
+        {/* DJ Mode Toggle */}
+        <div className="flex justify-end mt-1 pointer-events-auto">
+          <button
+            data-testid="button-dj-mode"
+            onClick={() => setIsDJMode(d => !d)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all duration-300 border",
+              isDJMode
+                ? "bg-primary/30 border-primary/60 text-primary shadow-[0_0_12px_rgba(var(--primary),0.4)]"
+                : "bg-white/5 border-white/10 text-white/40 hover:text-white/70"
+            )}
+          >
+            <RadioTower size={11} className={isDJMode ? "animate-pulse" : ""} />
+            <span>DJ Mode {isDJMode ? "ON" : "OFF"}</span>
+          </button>
+        </div>
       </div>
 
       {/* AI DJ Greeting Overlay */}
@@ -245,6 +298,16 @@ export default function Feed() {
           </div>
         </div>
       </div>
+
+      {/* DJ Mode Selecting Overlay */}
+      {isDJMode && djSelectingMsg && (
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 z-50 flex justify-center pointer-events-none">
+          <div className="flex items-center gap-2 bg-black/70 backdrop-blur-xl border border-primary/40 rounded-full px-5 py-2.5 shadow-xl animate-in zoom-in-75 duration-200">
+            <RadioTower size={14} className="text-primary animate-pulse" />
+            <span className="text-sm font-semibold text-white">{djSelectingMsg}</span>
+          </div>
+        </div>
+      )}
 
       {/* Now Vibing indicator */}
       {sessionCtxNow && sessionCtxNow.sessionMoods.length > 0 && (
@@ -271,6 +334,7 @@ export default function Feed() {
           if (!isNear) {
             return <div key={song.id} className="h-[100dvh] w-full snap-start snap-always bg-black" />;
           }
+          const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
           return (
             <SongCard
               key={song.id}
@@ -278,6 +342,8 @@ export default function Feed() {
               isActive={index === activeIndex}
               shouldPreload={index === activeIndex + 1}
               onSessionEvent={handleSessionEvent}
+              onSongEnd={isDJMode && index === activeIndex ? handleSongEnd : undefined}
+              isTrendingInMoments={momentTrendingIds.has(baseSongId)}
             />
           );
         })}

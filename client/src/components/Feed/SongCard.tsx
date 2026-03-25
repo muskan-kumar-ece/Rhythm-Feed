@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react";
-import { ApiSong, api } from "@/lib/api";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X } from "lucide-react";
+import { ApiSong, ApiMoment, ApiUser, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
 import { recordSessionPlay } from "@/lib/session";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 interface SongCardProps {
   song: ApiSong;
@@ -12,9 +12,13 @@ interface SongCardProps {
   shouldPreload?: boolean;
   /** Called after a song interaction is committed — Feed uses this to track session progress. */
   onSessionEvent?: () => void;
+  /** When provided, the song calls this instead of looping at end — used by Continuous DJ mode. */
+  onSongEnd?: () => void;
+  /** Show the "Trending in Moments" badge on this card. */
+  isTrendingInMoments?: boolean;
 }
 
-export default function SongCard({ song, isActive, shouldPreload = false, onSessionEvent }: SongCardProps) {
+export default function SongCard({ song, isActive, shouldPreload = false, onSessionEvent, onSongEnd, isTrendingInMoments = false }: SongCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -52,6 +56,16 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
     };
   }, [song.audioUrl, isActive, shouldPreload]);
   
+  // Moments panel state
+  const [showMomentsPanel, setShowMomentsPanel] = useState(false);
+  const baseSongIdForMoments = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+  const { data: songMoments = [] } = useQuery({
+    queryKey: ["song-moments", baseSongIdForMoments],
+    queryFn: () => api.getSongMoments(baseSongIdForMoments),
+    enabled: showMomentsPanel,
+    staleTime: 60_000,
+  });
+
   // Share to moment & comments state
   const [showShareModal, setShowShareModal] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
@@ -99,10 +113,13 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
             setProgress((currentTime / duration) * 100);
             
             if (currentTime >= duration && duration > 1) {
-              // Handle loop / replay
-              setReplays(r => r + 1);
-              audioRef.current.currentTime = 0;
-              audioRef.current.play().catch(e => console.error(e));
+              if (onSongEnd) {
+                onSongEnd();
+              } else {
+                setReplays(r => r + 1);
+                audioRef.current.currentTime = 0;
+                audioRef.current.play().catch(e => console.error(e));
+              }
             }
             
             // Sync lyrics based on real time
@@ -239,7 +256,7 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
   const [lastTapTime, setLastTapTime] = useState(0);
 
   const handleContainerClick = (e: React.MouseEvent) => {
-    if (showShareModal || showCommentsModal) return;
+    if (showShareModal || showCommentsModal || showMomentsPanel) return;
     
     const now = Date.now();
     const DOUBLE_TAP_DELAY = 300; // ms
@@ -413,6 +430,19 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                   </div>
                 </div>
               </div>
+
+              {/* Trending in Moments badge + See Moments button */}
+              {isTrendingInMoments && (
+                <button
+                  data-testid="badge-trending-moments"
+                  onClick={(e) => { e.stopPropagation(); setShowMomentsPanel(true); setIsPlaying(false); }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/40 hover:bg-purple-500/30 transition-colors self-start"
+                >
+                  <TrendingUp size={11} className="text-purple-400" />
+                  <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wide">Trending in Moments</span>
+                  <MessageSquareQuote size={11} className="text-purple-400" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -649,6 +679,77 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Moments Panel */}
+      {showMomentsPanel && (
+        <div
+          className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-300 pb-16"
+          onClick={(e) => { e.stopPropagation(); setShowMomentsPanel(false); setIsPlaying(true); }}
+        >
+          <div
+            className="bg-background border-t border-white/10 rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-1/2 duration-300 max-h-[75vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-2">
+                <MessageSquareQuote size={16} className="text-purple-400" />
+                <h3 className="text-base font-display font-bold text-white">Moments for this Song</h3>
+                {songMoments.length > 0 && <span className="text-xs text-white/40">{songMoments.length}</span>}
+              </div>
+              <button
+                onClick={() => { setShowMomentsPanel(false); setIsPlaying(true); }}
+                className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+              >
+                <X size={16} className="text-white/70" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 py-2">
+              {songMoments.length === 0 ? (
+                <div className="py-12 flex flex-col items-center gap-3 text-center px-6">
+                  <MessageSquareQuote size={36} className="text-white/10" />
+                  <p className="text-sm text-white/40">No Moments yet for this song</p>
+                  <p className="text-xs text-white/25">Tap the Moment button to be the first</p>
+                </div>
+              ) : (
+                songMoments.map((moment: ApiMoment & { user: ApiUser }) => (
+                  <div
+                    key={moment.id}
+                    data-testid={`moment-item-${moment.id}`}
+                    className="px-5 py-4 border-b border-white/5 last:border-0"
+                  >
+                    <div className="flex items-start gap-3">
+                      <img
+                        src={moment.user.avatarUrl}
+                        alt={moment.user.displayName}
+                        className="w-9 h-9 rounded-full object-cover border border-white/10 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-sm font-semibold text-white">{moment.user.displayName}</span>
+                          <span className="text-xs text-white/30">@{moment.user.username}</span>
+                        </div>
+                        <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl px-3 py-2 mb-2">
+                          <p className="text-sm text-purple-200 italic">"{moment.lyricLine}"</p>
+                        </div>
+                        {moment.caption && (
+                          <p className="text-xs text-white/60 mb-2">{moment.caption}</p>
+                        )}
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/40 capitalize">{moment.mood}</span>
+                          <div className="flex items-center gap-1 text-xs text-white/30">
+                            <Heart size={11} />
+                            <span>{moment.likes}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
