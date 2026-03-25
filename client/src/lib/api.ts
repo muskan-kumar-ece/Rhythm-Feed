@@ -28,15 +28,18 @@ export type ApiSong = {
   };
   uploadedBy: string | null;
   createdAt: string;
-  // Ranking metadata injected by the server ranking engine
+  // Ranking metadata injected by the server (Stages 1–3)
   _score?: number;
   _scoreBreakdown?: {
+    engagement: number;
     taste: number;
     recentBehavior: number;
-    engagement: number;
-    trending: number;
+    recency: number;
     timeOfDay: number;
+    poolBonus: number;
   };
+  /** Which candidate pools nominated this song: taste | trending | new | exploration */
+  _pools?: Array<"taste" | "trending" | "new" | "exploration">;
   // Client-side only
   isFollowingArtist?: boolean;
 };

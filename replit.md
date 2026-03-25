@@ -34,35 +34,50 @@ Demo user: `demo-user-1` (username: `vibescroller`) — all user actions use thi
 
 ## Recommendation / Ranking System
 
-### Server-side ranking (`server/ranking.ts`)
+### Three-stage server-side pipeline (`server/ranking.ts`)
 
-Every feed request calls `GET /api/songs/ranked` which:
+Every feed request calls `GET /api/songs/ranked` which runs 3 explicit stages:
 
-1. **Builds a taste profile** from the user's behavior logs:
-   - Accumulates mood/genre preference weights (positive for engagement, negative for skips)
-   - Tracks liked/replayed song IDs, recently-played IDs, recently-skipped IDs
+#### Stage 1 — Candidate Generation
+Four independent pools are built and merged (songs can appear in multiple pools):
 
-2. **Scores every song** across 5 components (weights add to 100%):
-   | Component | Weight | Source |
-   |---|---|---|
-   | Taste similarity | 30% | Mood/genre match vs accumulated preference weights |
-   | Recent behavior | 25% | +liked/replayed in 48h, −skipped in 24h, −recently heard |
-   | Engagement quality | 25% | Completion rate, replay rate, like rate, share rate from `features.popularity` + raw DB counts |
-   | Trending score | 15% | `recent24h` velocity vs historical baseline |
-   | Time-of-day bonus | 5% | Mood-hour match (night → Chill, morning → Focus, etc.) |
+| Pool | Selection Strategy | % of Catalogue |
+|---|---|---|
+| `taste` | Songs with at least one mood/genre tag that has a positive preference score (best-tag match, not net sum). Falls back to top-60%-by-engagement for new users. | ~60% |
+| `trending` | Highest `recent24h` engagement velocity (like rate × 40 + replay rate × 40 + comment rate × 20 + velocity bonus) | ~50% |
+| `new` | Most recently uploaded songs | ~40% |
+| `exploration` | Songs NOT in the taste pool — forced serendipity / discovery | remainder |
 
-3. **Greedy MMR diversity pass**: iteratively selects the best remaining song, applying a sliding-window artist penalty (−30pts if same artist in last 3 songs) and mood penalty (−10pts per overlapping mood in last 4 positions). This prevents feed clumping.
+Songs in multiple pools get a **pool-consensus bonus** (+10 pts per extra pool, max +20) applied in Stage 2.
 
-4. Returns songs with `_score` and `_scoreBreakdown` fields for debugging.
+#### Stage 2 — Scoring
+Each candidate is scored across 6 components:
+
+| Component | Weight | Source |
+|---|---|---|
+| Engagement quality | **35%** | Completion rate, replay rate, like/share rate from `features.popularity` + raw DB counts |
+| Taste similarity | **30%** | Max individual mood/genre tag score vs. preference weights (neutral 50 for new users) |
+| Recent behavior | **15%** | +liked/replayed in 48h, −skipped in 24h, −recently heard |
+| Recency / freshness | **10%** | Upload age decay (100 → 0 over 90 days) |
+| Time-of-day bonus | **5%** | Mood-hour match (night → Chill, morning → Focus, etc.) |
+| Pool consensus | **flat** | +10 pts per extra pool nomination, capped at +20 |
+
+#### Stage 3 — Ranking & Diversity
+- Initial sort by composite score (descending)
+- **Greedy MMR diversity pass**: iteratively picks the best remaining song after applying sliding-window penalties:
+  - −30 pts if same artist appeared in the last 3 selections
+  - −10 pts per overlapping mood tag in the last 4 selections
+
+Returns songs with `_score`, `_scoreBreakdown`, and `_pools` fields.
 
 ### Client-side segment assembler (`client/src/lib/recommendation.ts`)
 
-Since the server already ranks + diversifies, the client engine is a lightweight assembler:
-- Maintains a `shownBaseIds` set to avoid repeating within a session
-- Each scroll segment (6 cards) draws from different slices of the ranked pool:
-  - Slots 1–2: top 40% (personalized)
-  - Slot 3: highest trending-score song
-  - Slot 4: lower 40–100% (discovery/serendipity)
+Lightweight assembler that draws from the server-ranked pool:
+- Maintains a `shownBaseIds` set to avoid session-level repeats
+- Each 6-card scroll segment pulls from different pool slices:
+  - Slots 1–2: top 40% (best personalized)
+  - Slot 3: highest trending-velocity song
+  - Slot 4: lower 40–100% (serendipity/discovery)
   - Slot 5: top 60% (mid-tier personalized)
   - Slot 6: most recently uploaded
 

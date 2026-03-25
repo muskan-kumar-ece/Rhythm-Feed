@@ -1,12 +1,41 @@
+/**
+ * VibeScroll Multi-Stage Recommendation Engine
+ *
+ * Stage 1 – Candidate Generation
+ *   Build four independent candidate pools from the full song catalogue,
+ *   each representing a different selection strategy.
+ *
+ * Stage 2 – Scoring
+ *   Compute a composite relevance score for every candidate using:
+ *   engagement quality (35%), taste similarity (30%), recent user behavior (15%),
+ *   recency / freshness (10%), time-of-day context (5%),
+ *   plus a flat pool-consensus bonus for songs nominated by multiple pools.
+ *
+ * Stage 3 – Ranking & Diversity
+ *   Sort candidates by score, then run a greedy Maximal Marginal Relevance (MMR)
+ *   pass that penalises same-artist and same-mood repetition within a sliding
+ *   window of recently placed songs.
+ */
+
 import type { Song, BehaviorLog } from "@shared/schema";
+
+// ─── Pool Types ───────────────────────────────────────────────────────────────
+
+/** Which candidate pools a song was nominated by. */
+type Pool = "taste" | "trending" | "new" | "exploration";
+
+interface Candidate {
+  song: Song;
+  pools: Pool[];           // pools that nominated this song
+}
 
 // ─── Taste Profile ────────────────────────────────────────────────────────────
 
 interface TasteProfile {
+  /** Accumulated preference weight per mood tag. Positive = liked, negative = skipped. */
   moodScores: Record<string, number>;
+  /** Accumulated preference weight per genre tag. */
   genreScores: Record<string, number>;
-  likedIds: Set<string>;
-  replayedIds: Set<string>;
   recent48hLiked: Set<string>;
   recent48hReplayed: Set<string>;
   recent24hSkipped: Set<string>;
@@ -22,8 +51,6 @@ function buildTasteProfile(logs: BehaviorLog[], allSongs: Song[]): TasteProfile 
   const profile: TasteProfile = {
     moodScores: {},
     genreScores: {},
-    likedIds: new Set(),
-    replayedIds: new Set(),
     recent48hLiked: new Set(),
     recent48hReplayed: new Set(),
     recent24hSkipped: new Set(),
@@ -38,9 +65,6 @@ function buildTasteProfile(logs: BehaviorLog[], allSongs: Song[]): TasteProfile 
     const isRecent48h = age < MS_48H;
     const isRecent24h = age < MS_24H;
 
-    if (log.liked) profile.likedIds.add(log.songId);
-    if (log.replays > 0) profile.replayedIds.add(log.songId);
-
     if (isRecent48h) {
       if (!log.skipped) profile.recentlyPlayedIds.add(log.songId);
       if (log.liked) profile.recent48hLiked.add(log.songId);
@@ -48,20 +72,17 @@ function buildTasteProfile(logs: BehaviorLog[], allSongs: Song[]): TasteProfile 
     }
     if (isRecent24h && log.skipped) profile.recent24hSkipped.add(log.songId);
 
-    // Accumulate mood/genre preference weights
+    // Mood / genre preference accumulation
     const song = songMap.get(log.songId);
     if (!song) continue;
 
-    // Weight: positive for engagement, negative for early skips
     let weight = 0;
     if (!log.skipped) {
-      weight += Math.min(log.durationSeconds / 30, 3); // 0-3 pts for listen time
+      weight += Math.min(log.durationSeconds / 30, 3); // 0–3 for listen depth
       if (log.liked) weight += 5;
       weight += log.replays * 3;
-    } else if (log.durationSeconds < 5) {
-      weight = -2; // Immediate skip is a strong dislike signal
     } else {
-      weight = -0.5; // Late skip is a mild dislike
+      weight = log.durationSeconds < 5 ? -2 : -0.5; // hard vs soft skip
     }
 
     if (weight !== 0) {
@@ -77,201 +98,310 @@ function buildTasteProfile(logs: BehaviorLog[], allSongs: Song[]): TasteProfile 
   return profile;
 }
 
-// ─── Component Scorers ────────────────────────────────────────────────────────
+// ─── Stage 1: Candidate Generation ───────────────────────────────────────────
 
 /**
- * Score 0-100: how well this song matches the user's taste profile.
- * Uses accumulated mood + genre preference weights, normalized to 0-100.
+ * Builds four pools and merges them into a deduplicated candidate set.
+ *
+ * Pool "taste"       – songs whose mood/genre tags have a positive preference
+ *                      score, sorted by cumulative taste weight.
+ * Pool "trending"    – songs with the highest recent-24h engagement velocity.
+ * Pool "new"         – most recently uploaded songs.
+ * Pool "exploration" – songs NOT already in the taste pool; serendipitous picks.
+ *
+ * A song can appear in more than one pool. Pool membership is tracked so Stage 2
+ * can apply a consensus bonus to broadly-recommended songs.
  */
-function scoreTasteSimilarity(song: Song, profile: TasteProfile): number {
-  if (!profile.hasHistory) return 50; // Cold start: neutral
+function generateCandidates(allSongs: Song[], profile: TasteProfile): Candidate[] {
+  const map = new Map<string, Candidate>();
 
-  const moodValues = Object.values(profile.moodScores);
-  const genreValues = Object.values(profile.genreScores);
-  const maxMood = moodValues.length > 0 ? Math.max(...moodValues, 1) : 1;
-  const maxGenre = genreValues.length > 0 ? Math.max(...genreValues, 1) : 1;
-
-  let tasteScore = 0;
-  for (const m of song.features.mood) {
-    const s = profile.moodScores[m] || 0;
-    tasteScore += (s / maxMood) * 60; // Each mood match contributes up to 60 pts
-  }
-  for (const g of song.features.genre) {
-    const s = profile.genreScores[g] || 0;
-    tasteScore += (s / maxGenre) * 40; // Each genre match contributes up to 40 pts
+  function nominate(song: Song, pool: Pool) {
+    const existing = map.get(song.id);
+    if (existing) {
+      existing.pools.push(pool);
+    } else {
+      map.set(song.id, { song, pools: [pool] });
+    }
   }
 
-  return Math.max(0, Math.min(tasteScore, 100));
+  // ── Pool 1: Taste ──────────────────────────────────────────────────────────
+  // Songs qualify for this pool when ANY single mood or genre tag has a
+  // positive preference score (not a net sum — one strong match is enough).
+  // Falls back to top-60%-by-engagement when the user has no history or when
+  // no positive taste signal has accumulated yet (e.g. all listens were skips).
+  let tasteSongs: Song[];
+
+  if (profile.hasHistory) {
+    const scoredByTaste = allSongs
+      .map(s => ({
+        song: s,
+        // Use the MAX individual tag score rather than the sum so that a song
+        // with one strongly-liked mood isn't dragged down by neutral/negative tags.
+        bestTagScore: Math.max(
+          ...s.features.mood.map(m => profile.moodScores[m] || 0),
+          ...s.features.genre.map(g => profile.genreScores[g] || 0),
+          0, // floor so Math.max never returns -Infinity on empty arrays
+        ),
+      }))
+      .filter(({ bestTagScore }) => bestTagScore > 0)
+      .sort((a, b) => b.bestTagScore - a.bestTagScore);
+
+    tasteSongs = scoredByTaste.map(x => x.song)
+      .slice(0, Math.max(1, Math.ceil(allSongs.length * 0.6)));
+  } else {
+    tasteSongs = []; // will hit fallback below
+  }
+
+  // Fallback: if history exists but all signals were negative/neutral (e.g. only
+  // skips logged) or user is brand-new, use engagement-ranked top 60% as taste.
+  if (tasteSongs.length === 0) {
+    tasteSongs = [...allSongs]
+      .sort((a, b) => _engagementScore(b) - _engagementScore(a))
+      .slice(0, Math.max(1, Math.ceil(allSongs.length * 0.6)));
+  }
+
+  tasteSongs.forEach(s => nominate(s, "taste"));
+
+  // ── Pool 2: Trending ───────────────────────────────────────────────────────
+  // Top 50% by recent-24h engagement velocity.
+  const trendingSongs = [...allSongs]
+    .sort((a, b) => _trendingScore(b) - _trendingScore(a))
+    .slice(0, Math.max(1, Math.ceil(allSongs.length * 0.5)));
+  trendingSongs.forEach(s => nominate(s, "trending"));
+
+  // ── Pool 3: New ────────────────────────────────────────────────────────────
+  // Most recently uploaded songs (top 40% newest).
+  const newSongs = [...allSongs]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, Math.max(1, Math.ceil(allSongs.length * 0.4)));
+  newSongs.forEach(s => nominate(s, "new"));
+
+  // ── Pool 4: Exploration ────────────────────────────────────────────────────
+  // Songs NOT in the taste pool — forces serendipitous discovery.
+  // We always derive exploration as the complement of the taste pool so that
+  // every song appears in at least one pool and gets scored.
+  const tasteSongIds = new Set(tasteSongs.map(s => s.id));
+  const explorationSongs = allSongs.filter(s => !tasteSongIds.has(s.id));
+  // If taste covers everything (small catalogue), fall back to the lowest-scored
+  // third so users still get some variety.
+  if (explorationSongs.length === 0) {
+    [...allSongs]
+      .sort((a, b) => _engagementScore(a) - _engagementScore(b))
+      .slice(0, Math.max(1, Math.ceil(allSongs.length * 0.33)))
+      .forEach(s => nominate(s, "exploration"));
+  } else {
+    explorationSongs.forEach(s => nominate(s, "exploration"));
+  }
+
+  return Array.from(map.values());
+}
+
+// ─── Stage 2: Scoring ─────────────────────────────────────────────────────────
+
+/**
+ * Engagement quality: how good is the song based on real listen + reaction data?
+ * Sources: features.popularity (plays, completions, replays, likes, shares) + raw DB counts.
+ * Returns 0–100.
+ */
+function _engagementScore(song: Song): number {
+  const pop = song.features.popularity;
+  let score = 0;
+
+  if (pop.plays > 0) {
+    const completionRate = Math.min(pop.completions / pop.plays, 1);
+    const replayRate     = Math.min(pop.replays    / pop.plays, 0.5) / 0.5;
+    const likeRate       = Math.min(pop.likes      / pop.plays, 0.3) / 0.3;
+    const shareRate      = Math.min(pop.shares     / pop.plays, 0.1) / 0.1;
+    const logVolume      = Math.min(Math.log10(pop.plays + 1) / 5, 1);
+
+    score = completionRate * 35 + replayRate * 25 + likeRate * 20 + shareRate * 15 + logVolume * 5;
+  }
+
+  // Blend in raw DB counts for songs with sparse feature-level data
+  const rawBonus = Math.min((song.likes * 2 + song.saves * 3 + song.shares * 5) / 100, 25);
+  return Math.min(score + rawBonus, 100);
 }
 
 /**
- * Score 0-100: adjust based on recent (last 24-48h) listening signals.
- * Penalizes skipped songs, rewards songs the user engaged with recently.
+ * Trending / momentum: is the song blowing up *right now*?
+ * Compares recent-24h engagement rates vs estimated historical baseline.
+ * Returns 0–100.
  */
-function scoreRecentBehavior(song: Song, profile: TasteProfile): number {
-  let score = 50; // Neutral baseline
+function _trendingScore(song: Song): number {
+  const pop    = song.features.popularity;
+  const recent = pop.recent24h;
+  if (recent.plays === 0) return 0;
 
-  if (profile.recent48hLiked.has(song.id)) score += 40;
-  if (profile.recent48hReplayed.has(song.id)) score += 35;
-  if (profile.recentlyPlayedIds.has(song.id)) score -= 15; // Heard recently = mild penalty
-  if (profile.recent24hSkipped.has(song.id)) score -= 60; // Just skipped = strong penalty
+  const recentLikeRate   = recent.likes    / recent.plays;
+  const recentReplayRate = recent.replays  / recent.plays;
+  const recentCommentRate = recent.comments / recent.plays;
 
-  // Also boost songs similar in mood to what was liked in last 48h — indirect signal
-  if (profile.hasHistory) {
-    // noop - handled by taste similarity, which weights recent logs equally
+  // Velocity: how much faster is growth now vs the historical daily average?
+  const historicalDailyRate = Math.max((pop.plays - recent.plays) / 30, 1);
+  const velocityBonus = Math.min((recent.plays / historicalDailyRate) * 10, 50);
+
+  return Math.min(
+    recentLikeRate * 40 + recentReplayRate * 40 + recentCommentRate * 20 + velocityBonus,
+    100
+  );
+}
+
+/**
+ * Taste similarity: how well does this song match the user's learned preferences?
+ * Uses accumulated mood/genre weights, normalised against the user's top score.
+ * Returns 0–100. Returns 50 (neutral) for new users with no history.
+ */
+function _tasteSimilarityScore(song: Song, profile: TasteProfile): number {
+  if (!profile.hasHistory) return 50;
+
+  const moodVals  = Object.values(profile.moodScores);
+  const genreVals = Object.values(profile.genreScores);
+  const maxMood   = moodVals.length  > 0 ? Math.max(...moodVals,  1) : 1;
+  const maxGenre  = genreVals.length > 0 ? Math.max(...genreVals, 1) : 1;
+
+  let score = 0;
+  for (const m of song.features.mood) {
+    score += ((profile.moodScores[m]  || 0) / maxMood)  * 60;
   }
-
+  for (const g of song.features.genre) {
+    score += ((profile.genreScores[g] || 0) / maxGenre) * 40;
+  }
   return Math.max(0, Math.min(score, 100));
 }
 
 /**
- * Score 0-100: pure engagement quality of the song itself.
- * Uses completion rate, replay rate, like rate, share rate from the features blob + raw DB counts.
+ * Recency / freshness: newer songs surface more prominently.
+ * Decays from 100 (just uploaded) to ~0 after 90 days.
+ * Returns 0–100.
  */
-function scoreEngagement(song: Song): number {
-  const pop = song.features.popularity;
-  let engScore = 0;
-
-  if (pop.plays > 0) {
-    const completionRate = Math.min(pop.completions / pop.plays, 1);
-    const replayRate = Math.min(pop.replays / pop.plays, 0.5) / 0.5; // normalize to 50% cap
-    const likeRate = Math.min(pop.likes / pop.plays, 0.3) / 0.3;    // normalize to 30% cap
-    const shareRate = Math.min(pop.shares / pop.plays, 0.1) / 0.1;  // normalize to 10% cap
-    const logVolume = Math.min(Math.log10(pop.plays + 1) / 5, 1);   // log-scaled volume bonus
-
-    engScore = completionRate * 35 +
-               replayRate * 25 +
-               likeRate * 20 +
-               shareRate * 15 +
-               logVolume * 5;
-  }
-
-  // Blend in raw DB engagement counts for songs with very few feature-tracked plays
-  const rawBonus = Math.min(
-    (song.likes * 2 + song.saves * 3 + song.shares * 5) / 100,
-    25
-  );
-
-  return Math.min(engScore + rawBonus, 100);
+function _recencyScore(song: Song): number {
+  const ageDays = (Date.now() - new Date(song.createdAt).getTime()) / 86_400_000;
+  return Math.max(0, 100 - (ageDays / 90) * 100);
 }
 
 /**
- * Score 0-100: trending momentum based on recent24h engagement velocity.
- * Compares recent rate vs estimated historical rate to find "blowing up" songs.
+ * Recent behaviour adjustment: did the user interact with this song in the
+ * last 24–48 hours? Positive signals boost, negative signals penalise.
+ * Returns 0–100 (50 = neutral / no signal).
  */
-function scoreTrending(song: Song): number {
-  const pop = song.features.popularity;
-  const recent = pop.recent24h;
-
-  if (recent.plays === 0) return 0;
-
-  const recentLikeRate = recent.likes / recent.plays;
-  const recentReplayRate = recent.replays / recent.plays;
-  const recentCommentRate = recent.comments / recent.plays;
-
-  // Velocity: how much faster is it growing now vs. historical baseline?
-  const historicalRate = Math.max((pop.plays - recent.plays) / 30, 1); // fake 30-day baseline
-  const velocityBonus = Math.min((recent.plays / historicalRate) * 10, 50);
-
-  const score = recentLikeRate * 40 + recentReplayRate * 40 + recentCommentRate * 20 + velocityBonus;
-  return Math.min(score, 100);
+function _recentBehaviorScore(song: Song, profile: TasteProfile): number {
+  let score = 50; // neutral baseline
+  if (profile.recent48hLiked.has(song.id))    score += 40;
+  if (profile.recent48hReplayed.has(song.id)) score += 35;
+  if (profile.recentlyPlayedIds.has(song.id)) score -= 20; // heard recently → mild suppression
+  if (profile.recent24hSkipped.has(song.id))  score -= 60; // just skipped → strong suppression
+  return Math.max(0, Math.min(score, 100));
 }
 
 /**
- * Score 0 or 100: time-of-day mood match bonus.
+ * Time-of-day context: does the song's mood fit the current hour?
+ * Returns 0 or 100 (binary on/off boost).
  */
-function scoreTimeOfDay(song: Song, hour: number): number {
-  const moods = new Set(song.features.mood);
-  const isNight = hour >= 21 || hour < 5;
-  const isMorning = hour >= 5 && hour < 12;
-  const isAfternoon = hour >= 12 && hour < 17;
+function _timeOfDayScore(song: Song, hour: number): number {
+  const moods    = new Set(song.features.mood);
+  const isNight  = hour >= 21 || hour < 5;
+  const isMorn   = hour >= 5  && hour < 12;
+  const isAfter  = hour >= 12 && hour < 17;
   const isEvening = hour >= 17 && hour < 21;
 
-  if (isNight && (moods.has("Night Drive") || moods.has("Chill") || moods.has("Sad"))) return 100;
-  if (isMorning && (moods.has("Focus") || moods.has("Study") || moods.has("Hype"))) return 100;
-  if (isAfternoon && (moods.has("Hype") || song.features.energy === "high")) return 100;
-  if (isEvening && (moods.has("Chill") || song.features.energy === "medium")) return 100;
+  if (isNight   && (moods.has("Night Drive") || moods.has("Chill") || moods.has("Sad")))  return 100;
+  if (isMorn    && (moods.has("Focus") || moods.has("Study") || moods.has("Hype")))        return 100;
+  if (isAfter   && (moods.has("Hype") || song.features.energy === "high"))                 return 100;
+  if (isEvening && (moods.has("Chill") || song.features.energy === "medium"))              return 100;
   return 0;
 }
 
 /**
- * Compute the composite relevance score for a single song.
- * Weights:  taste 30% | recent behavior 25% | engagement 25% | trending 15% | time 5%
+ * Stage 2: compute the composite relevance score for a single candidate.
+ *
+ * Weights:
+ *   Engagement     35%  – quality signal from play/reaction data
+ *   Taste          30%  – personalised preference match
+ *   Recent behav.  15%  – short-term user signals
+ *   Recency        10%  – freshness / upload age
+ *   Time of day     5%  – contextual hour match
+ *
+ * Plus a flat pool-consensus bonus: songs nominated by multiple pools are
+ * considered high-confidence recommendations (+10 pts per extra pool, capped at +20).
  */
-function computeRelevanceScore(song: Song, profile: TasteProfile, hour: number): number {
-  const taste = scoreTasteSimilarity(song, profile);
-  const recent = scoreRecentBehavior(song, profile);
-  const engagement = scoreEngagement(song);
-  const trending = scoreTrending(song);
-  const timeOfDay = scoreTimeOfDay(song, hour);
+function scoreCandidate(candidate: Candidate, profile: TasteProfile, hour: number): number {
+  const { song, pools } = candidate;
+
+  const engagement   = _engagementScore(song);
+  const taste        = _tasteSimilarityScore(song, profile);
+  const recency      = _recencyScore(song);
+  const recentBehav  = _recentBehaviorScore(song, profile);
+  const timeOfDay    = _timeOfDayScore(song, hour);
+
+  // Bonus for appearing in multiple pools (cross-pool consensus)
+  const poolBonus = Math.min((pools.length - 1) * 10, 20);
 
   return (
-    taste * 0.30 +
-    recent * 0.25 +
-    engagement * 0.25 +
-    trending * 0.15 +
-    timeOfDay * 0.05
+    engagement  * 0.35 +
+    taste       * 0.30 +
+    recentBehav * 0.15 +
+    recency     * 0.10 +
+    timeOfDay   * 0.05 +
+    poolBonus
   );
 }
 
-// ─── Diversity-Aware Ranking (MMR) ───────────────────────────────────────────
+// ─── Stage 3: Ranking & Diversity ─────────────────────────────────────────────
 
 /**
- * Greedy Maximal Marginal Relevance pass.
+ * Greedy MMR diversity pass.
  *
- * After initial scoring we don't just sort by score — we iteratively pick the
- * best song while applying a sliding-window penalty for same artist or same mood
- * that already appeared in the last `windowSize` slots.
+ * Sorts candidates by descending score, then re-orders them so that the final
+ * feed never places the same artist in the last `artistWindow` positions or
+ * accumulates too many overlapping mood tags within `moodWindow` positions.
  *
- * This ensures the feed feels varied even when a user loves one genre/artist.
+ * This avoids "artist clumping" even when the user strongly prefers one artist,
+ * and prevents a feed that feels tonally monotonous.
  */
 function applyDiversityRanking(
-  songs: Song[],
-  relevanceScores: Map<string, number>,
+  candidates: { candidate: Candidate; score: number }[],
   artistWindow = 3,
-  moodWindow = 4
-): Song[] {
-  // Start with a relevance-sorted list for tie-breaking
-  const pool = songs.slice().sort(
-    (a, b) => (relevanceScores.get(b.id) || 0) - (relevanceScores.get(a.id) || 0)
-  );
+  moodWindow   = 4
+): { candidate: Candidate; score: number }[] {
+  // Initial sort (relevance order for tie-breaking inside each MMR step)
+  const pool = [...candidates].sort((a, b) => b.score - a.score);
 
-  const result: Song[] = [];
-  const placed = new Set<string>();
+  const result: typeof pool = [];
+  const placed    = new Set<string>();
   const recentArtists: string[] = [];
-  const recentMoods: string[] = [];
+  const recentMoods:   string[] = [];
 
   while (placed.size < pool.length) {
-    let bestId: string | null = null;
+    let bestIdx   = -1;
     let bestFinal = -Infinity;
 
-    for (const song of pool) {
-      if (placed.has(song.id)) continue;
+    for (let i = 0; i < pool.length; i++) {
+      const item = pool[i];
+      if (placed.has(item.candidate.song.id)) continue;
 
-      const base = relevanceScores.get(song.id) || 0;
+      const { song } = item.candidate;
 
-      // Artist diversity: penalize if this artist appeared in the last `artistWindow` songs
+      // Artist diversity penalty
       const artistPenalty = recentArtists.slice(-artistWindow).includes(song.artist) ? 30 : 0;
 
-      // Mood diversity: penalize each overlapping mood from the recent `moodWindow` selections
-      const recentMoodSet = new Set(recentMoods.slice(-moodWindow * song.features.mood.length));
-      const moodOverlap = song.features.mood.filter(m => recentMoodSet.has(m)).length;
-      const moodPenalty = moodOverlap * 10;
+      // Mood diversity penalty (each overlapping mood costs points)
+      const recentMoodSet = new Set(recentMoods.slice(-(moodWindow * 3)));
+      const moodPenalty   = song.features.mood.filter(m => recentMoodSet.has(m)).length * 10;
 
-      const finalScore = base - artistPenalty - moodPenalty;
+      const finalScore = item.score - artistPenalty - moodPenalty;
       if (finalScore > bestFinal) {
         bestFinal = finalScore;
-        bestId = song.id;
+        bestIdx   = i;
       }
     }
 
-    if (!bestId) break;
+    if (bestIdx < 0) break;
 
-    const winner = pool.find(s => s.id === bestId)!;
+    const winner = pool[bestIdx];
     result.push(winner);
-    placed.add(winner.id);
-    recentArtists.push(winner.artist);
-    for (const m of winner.features.mood) recentMoods.push(m);
+    placed.add(winner.candidate.song.id);
+    recentArtists.push(winner.candidate.song.artist);
+    for (const m of winner.candidate.song.features.mood) recentMoods.push(m);
   }
 
   return result;
@@ -280,59 +410,82 @@ function applyDiversityRanking(
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export interface RankedSong extends Song {
+  /** Final composite score (0–100+). */
   _score: number;
+  /** Score component breakdown for debugging / transparency. */
   _scoreBreakdown: {
+    engagement: number;
     taste: number;
     recentBehavior: number;
-    engagement: number;
-    trending: number;
+    recency: number;
     timeOfDay: number;
+    poolBonus: number;
   };
+  /** Which candidate pools nominated this song. */
+  _pools: Pool[];
 }
 
 /**
- * Main entry point: rank all songs for a given user.
+ * Main entry point. Runs the full three-stage pipeline and returns songs
+ * ordered for the feed, annotated with score metadata.
  *
- * Steps:
- *  1. Build taste profile from behavior logs
- *  2. Compute relevance score for every song (taste + recent + engagement + trending + time)
- *  3. Apply greedy MMR diversity pass to avoid artist/mood clumping
- *  4. Return sorted songs with _score annotation for debugging
+ * @param allSongs   Full catalogue from the database.
+ * @param logs       Behaviour logs for the requesting user.
+ * @returns          Songs ordered by relevance + diversity, with `_score` etc.
  */
 export function rankSongsForUser(allSongs: Song[], logs: BehaviorLog[]): RankedSong[] {
-  const hour = new Date().getHours();
+  const hour    = new Date().getHours();
   const profile = buildTasteProfile(logs, allSongs);
 
-  // Score every song
-  const relevanceScores = new Map<string, number>();
-  const breakdowns = new Map<string, RankedSong["_scoreBreakdown"]>();
+  // ── Stage 1: Candidate Generation ─────────────────────────────────────────
+  const candidates = generateCandidates(allSongs, profile);
 
-  for (const song of allSongs) {
-    const taste = scoreTasteSimilarity(song, profile);
-    const recent = scoreRecentBehavior(song, profile);
-    const engagement = scoreEngagement(song);
-    const trending = scoreTrending(song);
-    const timeOfDay = scoreTimeOfDay(song, hour);
+  // ── Stage 2: Scoring ───────────────────────────────────────────────────────
+  const scored = candidates.map(candidate => {
+    const { song, pools } = candidate;
 
-    const total = taste * 0.30 + recent * 0.25 + engagement * 0.25 + trending * 0.15 + timeOfDay * 0.05;
+    const engagement  = _engagementScore(song);
+    const taste       = _tasteSimilarityScore(song, profile);
+    const recency     = _recencyScore(song);
+    const recentBehav = _recentBehaviorScore(song, profile);
+    const timeOfDay   = _timeOfDayScore(song, hour);
+    const poolBonus   = Math.min((pools.length - 1) * 10, 20);
 
-    relevanceScores.set(song.id, total);
-    breakdowns.set(song.id, {
-      taste: Math.round(taste * 10) / 10,
-      recentBehavior: Math.round(recent * 10) / 10,
-      engagement: Math.round(engagement * 10) / 10,
-      trending: Math.round(trending * 10) / 10,
-      timeOfDay,
-    });
-  }
+    const score = (
+      engagement  * 0.35 +
+      taste       * 0.30 +
+      recentBehav * 0.15 +
+      recency     * 0.10 +
+      timeOfDay   * 0.05 +
+      poolBonus
+    );
 
-  // Diversity-aware ordering
-  const ordered = applyDiversityRanking(allSongs, relevanceScores);
+    return {
+      candidate,
+      score,
+      breakdown: {
+        engagement:    Math.round(engagement  * 10) / 10,
+        taste:         Math.round(taste       * 10) / 10,
+        recentBehavior: Math.round(recentBehav * 10) / 10,
+        recency:       Math.round(recency     * 10) / 10,
+        timeOfDay,
+        poolBonus,
+      },
+    };
+  });
 
-  // Annotate with scores for transparency
-  return ordered.map(song => ({
-    ...song,
-    _score: Math.round((relevanceScores.get(song.id) || 0) * 100) / 100,
-    _scoreBreakdown: breakdowns.get(song.id)!,
+  // ── Stage 3: Ranking & Diversity ───────────────────────────────────────────
+  const ranked = applyDiversityRanking(
+    scored.map(s => ({ candidate: s.candidate, score: s.score }))
+  );
+
+  // Re-attach breakdown data and build the final annotated list
+  const breakdownMap = new Map(scored.map(s => [s.candidate.song.id, s.breakdown]));
+
+  return ranked.map(({ candidate, score }) => ({
+    ...candidate.song,
+    _score:          Math.round(score * 100) / 100,
+    _scoreBreakdown: breakdownMap.get(candidate.song.id)!,
+    _pools:          candidate.pools,
   }));
 }
