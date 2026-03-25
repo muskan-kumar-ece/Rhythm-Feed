@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X, UserCheck, UserPlus } from "lucide-react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X, UserCheck, UserPlus, Loader2 } from "lucide-react";
 import { ApiSong, ApiMoment, ApiUser, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
 import { recordSessionPlay } from "@/lib/session";
+import { audioManager } from "@/lib/audioManager";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
@@ -48,28 +49,26 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
 
   const [currentLyricIndex, setCurrentLyricIndex] = useState(0);
   
-  // Audio state
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  
-  // Initialize audio when url is provided or when preloading
+  // ── Audio key — stable identifier for this song in the global pool ────────
+  // Use audioUrl as the key so the same track is never loaded twice
+  const audioKey = song.audioUrl || `song-${song.id.split("-")[0]}`;
+
+  // ── Buffering indicator ────────────────────────────────────────────────────
+  const [isBuffering, setIsBuffering] = useState(false);
+
+  // Register buffering callback when this card is active
+  useEffect(() => {
+    if (!isActive) return;
+    audioManager.onBuffering(setIsBuffering);
+    return () => audioManager.onBuffering(() => {});
+  }, [isActive]);
+
+  // ── Preload into global pool as soon as card is near-active ───────────────
   useEffect(() => {
     if (song.audioUrl && (isActive || shouldPreload)) {
-      if (!audioRef.current) {
-        audioRef.current = new Audio(song.audioUrl);
-        audioRef.current.preload = "auto";
-        audioRef.current.loop = false; // We handle loop manually for replay tracking
-      } else if (audioRef.current.src !== song.audioUrl) {
-        audioRef.current.src = song.audioUrl;
-      }
+      audioManager.preload(audioKey, song.audioUrl);
     }
-    
-    return () => {
-      if (audioRef.current && !isActive && !shouldPreload) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-    };
-  }, [song.audioUrl, isActive, shouldPreload]);
+  }, [song.audioUrl, isActive, shouldPreload, audioKey]);
   
   // Moments panel state
   const [showMomentsPanel, setShowMomentsPanel] = useState(false);
@@ -122,81 +121,75 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
       duration: 0.5 + Math.random() * 0.5,
     })), []);
 
-  // Mock playback logic
+  // ── Playback engine — uses global AudioManager ────────────────────────────
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    
-    if (isActive && isPlaying) {
-      // Handle resuming logic for tracking
-      if (!lastResumeTime) {
-        setLastResumeTime(Date.now());
-      }
 
-      if (audioRef.current) {
-        audioRef.current.play().catch(e => console.error("Audio playback failed:", e));
-        
-        // Update progress and lyrics based on real audio time
+    if (isActive && isPlaying) {
+      if (!lastResumeTime) setLastResumeTime(Date.now());
+
+      const el = audioManager.getElement(audioKey);
+
+      if (song.audioUrl) {
+        // Kick off play (instant if pre-buffered, otherwise awaits canplay)
+        audioManager.play(audioKey).catch(() => {});
+
+        // Poll every 100 ms for progress + lyrics + end detection
         interval = setInterval(() => {
-          if (audioRef.current) {
-            const currentTime = audioRef.current.currentTime;
-            const duration = audioRef.current.duration || 1; // prevent div by zero
-            
-            setProgress((currentTime / duration) * 100);
-            
-            if (currentTime >= duration && duration > 1) {
-              if (onSongEnd) {
-                onSongEnd();
-              } else {
-                setReplays(r => r + 1);
-                audioRef.current.currentTime = 0;
-                audioRef.current.play().catch(e => console.error(e));
-              }
-            }
-            
-            // Sync lyrics based on real time
-            const lyricIndex = song.lyrics.findIndex((lyric, idx) => {
-              const nextLyric = song.lyrics[idx + 1];
-              return currentTime >= lyric.time && (!nextLyric || currentTime < nextLyric.time);
-            });
-            
-            if (lyricIndex !== -1) {
-              setCurrentLyricIndex(lyricIndex);
+          const el = audioManager.getElement(audioKey);
+          if (!el) return;
+
+          const currentTime = el.currentTime;
+          const duration    = el.duration || 1;
+
+          setProgress((currentTime / duration) * 100);
+
+          // End of track
+          if (duration > 1 && currentTime >= duration - 0.15) {
+            if (onSongEnd) {
+              onSongEnd();
+            } else {
+              setReplays(r => r + 1);
+              audioManager.seek(audioKey, 0);
+              audioManager.play(audioKey).catch(() => {});
             }
           }
+
+          // Lyric sync
+          const lyricIndex = song.lyrics.findIndex((lyric, idx) => {
+            const next = song.lyrics[idx + 1];
+            return currentTime >= lyric.time && (!next || currentTime < next.time);
+          });
+          if (lyricIndex !== -1) setCurrentLyricIndex(lyricIndex);
         }, 100);
       } else {
-        // Fallback for dummy tracks without audio
+        // Fallback for songs without an audio URL
         interval = setInterval(() => {
           setProgress(p => {
-            if (p >= 100) {
-              setReplays(r => r + 1);
-              return 0; // Loop mockup
-            }
+            if (p >= 100) { setReplays(r => r + 1); return 0; }
             return p + 0.5;
           });
         }, 50);
       }
     } else {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      // Handle pausing logic for tracking
+      // Pause
+      if (song.audioUrl) audioManager.pause(audioKey);
       if (lastResumeTime) {
-         setTotalListenTimeMs(prev => prev + (Date.now() - lastResumeTime));
-         setLastResumeTime(null);
+        setTotalListenTimeMs(prev => prev + (Date.now() - lastResumeTime));
+        setLastResumeTime(null);
       }
     }
-    
-    return () => clearInterval(interval);
-  }, [isActive, isPlaying, song.lyrics]);
 
-  // Mock lyrics sync for fallback
+    return () => clearInterval(interval);
+  }, [isActive, isPlaying, audioKey, song.audioUrl, song.lyrics]);
+
+  // Fallback lyrics sync (only when no real audio element)
   useEffect(() => {
-    if (!audioRef.current && isActive && isPlaying) {
+    if (!song.audioUrl && isActive && isPlaying) {
       const lyricIndex = Math.floor((progress / 100) * song.lyrics.length);
       setCurrentLyricIndex(Math.min(lyricIndex, Math.max(0, song.lyrics.length - 1)));
     }
-  }, [progress, isActive, isPlaying, song.lyrics.length]);
+  }, [progress, isActive, isPlaying, song.audioUrl, song.lyrics.length]);
 
   // Auto-play and Tracking when active
   useEffect(() => {
@@ -208,9 +201,8 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
       setTotalListenTimeMs(0);
       setReplays(0);
       setPauseCount(0);
-      if (audioRef.current) {
-         audioRef.current.currentTime = 0;
-      }
+      // Reset playhead so every activation starts from the beginning
+      audioManager.seek(audioKey, 0);
     } else {
       setIsPlaying(false);
       setShowShareModal(false);
@@ -229,7 +221,8 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
         const isSkip = durationSec < 5 && replays === 0;
         
         // Calculate skip time if it was a skip
-        const skipTimeSeconds = isSkip && audioRef.current ? parseFloat(audioRef.current.currentTime.toFixed(1)) : null;
+        const _el = audioManager.getElement(audioKey);
+        const skipTimeSeconds = isSkip && _el ? parseFloat(_el.currentTime.toFixed(1)) : null;
         
         const hour = new Date().getHours();
         let timeOfDay = "Night";
@@ -284,46 +277,55 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
   }, [isActive]);
 
   // ── Haptic feedback utility ───────────────────────────────────────────────
-  const haptic = (pattern: number | number[] = 10) => {
+  const haptic = useCallback((pattern: number | number[] = 10) => {
     try { navigator.vibrate(pattern); } catch {}
-  };
+  }, []);
 
-  // Double tap to like logic
-  const [lastTapTime, setLastTapTime] = useState(0);
+  // ── Double-tap to like — timer-based, no audio flicker ───────────────────
+  // First tap sets a 280 ms timer; if a second tap arrives it's cancelled and
+  // the like fires.  Play state never changes on a double-tap's first tap.
+  const tapTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTapTimeRef = useRef(0);
 
-  const handleContainerClick = (e: React.MouseEvent) => {
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
     if (showShareModal || showCommentsModal || showMomentsPanel) return;
 
     const now = Date.now();
-    const DOUBLE_TAP_WINDOW = 280;
+    const WINDOW = 280;
 
-    if (now - lastTapTime < DOUBLE_TAP_WINDOW) {
-      // Double-tap: undo any play toggle from first tap, then like
-      setIsPlaying(prev => !prev);
+    if (now - lastTapTimeRef.current < WINDOW && tapTimerRef.current) {
+      // ── Double tap ─────────────────────────────────────────────────────
+      clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = null;
+      lastTapTimeRef.current = 0;
+
       if (!isLiked) {
-        haptic([30, 20, 60]); // satisfying double-pulse for like
+        haptic([30, 20, 60]);
         setIsLiked(true);
         setLikeAnimating(true);
         setShowLikeCounter(true);
         setShowHeartAnimation(true);
-        setTimeout(() => setLikeAnimating(false), 600);
+        setTimeout(() => setLikeAnimating(false),  600);
         setTimeout(() => setShowLikeCounter(false), 900);
         setTimeout(() => setShowHeartAnimation(false), 1000);
-        const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+        const baseSongId = song.id
+          .split("-rank-")[0].split("-rapid-")[0]
+          .split("-discover")[0].split("-new")[0].split("-mood-")[0];
         api.likeSong(baseSongId)
           .then(() => queryClient.invalidateQueries({ queryKey: ["liked-songs"] }))
           .catch(() => setIsLiked(false));
       }
-      setLastTapTime(0);
     } else {
-      // Single tap: immediate play/pause
-      haptic(8);
-      if (isPlaying) setPauseCount(p => p + 1);
-      setIsPlaying(p => !p);
+      // ── First tap — wait before toggling play ─────────────────────────
+      lastTapTimeRef.current = now;
+      tapTimerRef.current = setTimeout(() => {
+        tapTimerRef.current = null;
+        haptic(8);
+        if (isPlaying) setPauseCount(p => p + 1);
+        setIsPlaying(p => !p);
+      }, WINDOW);
     }
-
-    setLastTapTime(now);
-  };
+  }, [showShareModal, showCommentsModal, showMomentsPanel, isLiked, isPlaying, song.id, haptic, queryClient]);
 
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -349,10 +351,8 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
 
   const restartSong = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(console.error);
-    }
+    audioManager.seek(audioKey, 0);
+    audioManager.play(audioKey).catch(() => {});
     setProgress(0);
     setIsPlaying(true);
   };
@@ -380,6 +380,16 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
         )}>
           <Play fill="white" size={48} className="ml-2 text-white" />
         </div>
+
+        {/* Buffering Indicator — shown while audio is loading */}
+        {isBuffering && isActive && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none flex flex-col items-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-black/50 backdrop-blur-xl border border-white/15 flex items-center justify-center">
+              <Loader2 size={26} className="text-primary animate-spin" />
+            </div>
+            <span className="text-xs text-white/60 font-medium tracking-wide">Loading…</span>
+          </div>
+        )}
 
         {/* Double Tap Heart Animation */}
         <div className={cn(

@@ -4,6 +4,7 @@ import SongCard from "@/components/Feed/SongCard";
 import AIDJIntro from "@/components/Feed/AIDJIntro";
 import Onboarding from "@/components/Onboarding";
 import { ApiSong, api } from "@/lib/api";
+import { audioManager } from "@/lib/audioManager";
 import {
   generateFeedSegment,
   generateMoodFeedSegment,
@@ -71,6 +72,17 @@ export default function Feed() {
     const base = s.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
     return base;
   }));
+
+  // ── Audio GC — release elements that are more than 3 cards away ──────────
+  useEffect(() => {
+    if (feedItems.length === 0) return;
+    // Keep active, next 2, and previous 1 in the pool; release everything else
+    const keepKeys = feedItems
+      .slice(Math.max(0, activeIndex - 1), activeIndex + 3)
+      .map(s => s.audioUrl)
+      .filter(Boolean);
+    audioManager.gc(keepKeys);
+  }, [activeIndex, feedItems]);
 
   // ── Session awareness ────────────────────────────────────────────────────────
   const [sessionVersion, setSessionVersion] = useState(0);
@@ -383,7 +395,7 @@ export default function Feed() {
               key={song.id}
               song={song}
               isActive={index === activeIndex}
-              shouldPreload={index === activeIndex + 1}
+              shouldPreload={index > activeIndex && index <= activeIndex + 2}
               onSessionEvent={handleSessionEvent}
               onSongEnd={isDJMode && index === activeIndex ? handleSongEnd : undefined}
               isTrendingInMoments={momentTrendingIds.has(baseSongId)}
