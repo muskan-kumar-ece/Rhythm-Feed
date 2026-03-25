@@ -1,14 +1,20 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Heart, MessageCircle, PlayCircle, MoreHorizontal, Plus, Quote } from "lucide-react";
-import { dummyMoments, Moment } from "@/lib/dummyData";
+import { ApiMoment, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export default function Moments() {
   const [showCommentsModal, setShowCommentsModal] = useState(false);
-  const [activeMoment, setActiveMoment] = useState<Moment | null>(null);
+  const [activeMoment, setActiveMoment] = useState<ApiMoment | null>(null);
   const [newComment, setNewComment] = useState("");
 
-  const handleCommentClick = (moment: Moment) => {
+  const { data: moments, isLoading } = useQuery({
+    queryKey: ["moments"],
+    queryFn: () => api.getMoments(),
+  });
+
+  const handleCommentClick = (moment: ApiMoment) => {
     setActiveMoment(moment);
     setShowCommentsModal(true);
   };
@@ -25,7 +31,12 @@ export default function Moments() {
 
       {/* Feed */}
       <main className="p-4 space-y-6">
-        {dummyMoments.map((moment) => (
+        {isLoading && (
+          <div className="flex justify-center py-12">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {(moments || []).map((moment) => (
           <MomentCard 
             key={moment.id} 
             moment={moment} 
@@ -126,9 +137,23 @@ export default function Moments() {
   );
 }
 
-function MomentCard({ moment, onCommentClick }: { moment: Moment, onCommentClick: () => void }) {
+function MomentCard({ moment, onCommentClick }: { moment: ApiMoment, onCommentClick: () => void }) {
   const [isLiked, setIsLiked] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  const handleLike = () => {
+    if (isLiked) {
+      setIsLiked(false);
+      api.unlikeMoment(moment.id).catch(() => setIsLiked(true));
+    } else {
+      setIsLiked(true);
+      api.likeMoment(moment.id).catch(() => setIsLiked(false));
+    }
+  };
+
+  const timeAgo = new Date(moment.createdAt).toLocaleString("en-US", { 
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit" 
+  });
 
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 shadow-lg">
@@ -136,11 +161,11 @@ function MomentCard({ moment, onCommentClick }: { moment: Moment, onCommentClick
       <div className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 p-0.5">
-            <img src={moment.user.avatarUrl} alt={moment.user.name} className="w-full h-full rounded-full object-cover" />
+            <img src={moment.user.avatarUrl} alt={moment.user.displayName} className="w-full h-full rounded-full object-cover" />
           </div>
           <div>
-            <p className="font-semibold text-white/90 text-sm">{moment.user.name}</p>
-            <p className="text-[10px] text-white/50 font-medium">{moment.timestamp}</p>
+            <p className="font-semibold text-white/90 text-sm">{moment.user.displayName}</p>
+            <p className="text-[10px] text-white/50 font-medium">{timeAgo}</p>
           </div>
         </div>
         <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors">
@@ -212,7 +237,7 @@ function MomentCard({ moment, onCommentClick }: { moment: Moment, onCommentClick
       <div className="px-5 py-4 border-t border-white/5 flex items-center justify-between bg-black/20">
         <div className="flex items-center gap-6">
           <button 
-            onClick={() => setIsLiked(!isLiked)}
+            onClick={handleLike}
             className="flex items-center gap-2 group/btn"
           >
             <div className={cn("p-1.5 rounded-full transition-colors", isLiked ? "bg-primary/20" : "bg-transparent group-hover/btn:bg-white/5")}>

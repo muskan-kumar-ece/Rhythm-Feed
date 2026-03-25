@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw } from "lucide-react";
-import { Song } from "@/lib/dummyData";
+import { ApiSong, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
 
 interface SongCardProps {
-  song: Song;
+  song: ApiSong;
   isActive: boolean;
   shouldPreload?: boolean;
 }
@@ -14,7 +14,15 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(song.isFollowingArtist);
+  const [isFollowing, setIsFollowing] = useState(song.isFollowingArtist ?? false);
+  
+  // Fetch initial like/save state from API
+  useEffect(() => {
+    const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+    api.isLiked(baseSongId).then(r => setIsLiked(r.liked)).catch(() => {});
+    api.isSaved(baseSongId).then(r => setIsSaved(r.saved)).catch(() => {});
+  }, [song.id]);
+
   const [currentLyricIndex, setCurrentLyricIndex] = useState(0);
   
   // Audio state
@@ -170,10 +178,11 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
         else if (hour >= 12 && hour < 17) timeOfDay = "Afternoon";
         else if (hour >= 17 && hour < 21) timeOfDay = "Evening";
 
+        const durationRounded = parseFloat(durationSec.toFixed(1));
         trackListenBehavior({
           songId: song.id,
           songTitle: song.title,
-          durationSeconds: parseFloat(durationSec.toFixed(1)),
+          durationSeconds: durationRounded,
           skipped: isSkip,
           skipTimeSeconds,
           replays,
@@ -182,6 +191,16 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
           timestamp: new Date().toISOString(),
           timeOfDay
         });
+
+        // Also persist to the real backend
+        const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+        api.logBehavior({
+          songId: baseSongId,
+          durationSeconds: durationRounded,
+          skipped: isSkip,
+          liked: isLiked,
+          replays,
+        }).catch(() => {});
 
         setListenStartTime(null);
         setLastResumeTime(null);
@@ -202,9 +221,10 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
       // Double tap detected
       if (!isLiked) {
         setIsLiked(true);
-        // Trigger animation
         setShowHeartAnimation(true);
         setTimeout(() => setShowHeartAnimation(false), 1000);
+        const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+        api.likeSong(baseSongId).catch(() => setIsLiked(false));
       }
     } else {
       // Single tap (play/pause) - wait a tiny bit to make sure it's not a double tap
@@ -372,8 +392,21 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
           {/* Right: Actions */}
           <div className="flex flex-col items-center gap-6 pb-2">
             <button 
-              onClick={(e) => { e.stopPropagation(); setIsLiked(!isLiked); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+                if (isLiked) {
+                  setIsLiked(false);
+                  api.unlikeSong(baseSongId).catch(() => setIsLiked(true));
+                } else {
+                  setIsLiked(true);
+                  setShowHeartAnimation(true);
+                  setTimeout(() => setShowHeartAnimation(false), 1000);
+                  api.likeSong(baseSongId).catch(() => setIsLiked(false));
+                }
+              }}
               className="flex flex-col items-center gap-1 group/btn"
+              data-testid="button-like"
             >
               <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
                 <Heart size={26} className={cn("transition-colors", isLiked ? "fill-destructive text-destructive" : "text-white")} />
@@ -394,8 +427,19 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
             </button>
 
             <button 
-              onClick={(e) => { e.stopPropagation(); setIsSaved(!isSaved); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+                if (isSaved) {
+                  setIsSaved(false);
+                  api.unsaveSong(baseSongId).catch(() => setIsSaved(true));
+                } else {
+                  setIsSaved(true);
+                  api.saveSong(baseSongId).catch(() => setIsSaved(false));
+                }
+              }}
               className="flex flex-col items-center gap-1 group/btn"
+              data-testid="button-save"
             >
               <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
                 <Bookmark size={26} className={cn("transition-colors", isSaved ? "fill-primary text-primary" : "text-white")} />

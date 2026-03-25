@@ -1,18 +1,107 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  displayName: text("display_name").notNull(),
+  avatarUrl: text("avatar_url").notNull().default("https://i.pravatar.cc/150?u=default"),
+  bio: text("bio").notNull().default(""),
+  followers: integer("followers").notNull().default(0),
+  following: integer("following").notNull().default(0),
+  isArtist: boolean("is_artist").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const songs = pgTable("songs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  artist: text("artist").notNull(),
+  coverUrl: text("cover_url").notNull(),
+  audioUrl: text("audio_url").notNull().default(""),
+  mood: text("mood").notNull(),
+  likes: integer("likes").notNull().default(0),
+  comments: integer("comments").notNull().default(0),
+  saves: integer("saves").notNull().default(0),
+  shares: integer("shares").notNull().default(0),
+  lyrics: jsonb("lyrics").$type<{ time: number; text: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  features: jsonb("features").$type<{
+    tempo: string;
+    energy: string;
+    genre: string[];
+    mood: string[];
+    popularity: {
+      plays: number;
+      likes: number;
+      replays: number;
+      completions: number;
+      shares: number;
+      recent24h: { plays: number; likes: number; replays: number; comments: number };
+    };
+  }>().notNull().default(sql`'{}'::jsonb`),
+  uploadedBy: varchar("uploaded_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
+
+export const moments = pgTable("moments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  songId: varchar("song_id").notNull().references(() => songs.id),
+  lyricLine: text("lyric_line").notNull(),
+  mood: text("mood").notNull(),
+  caption: text("caption").notNull(),
+  likes: integer("likes").notNull().default(0),
+  comments: integer("comments").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const behaviorLogs = pgTable("behavior_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  songId: varchar("song_id").notNull().references(() => songs.id),
+  durationSeconds: integer("duration_seconds").notNull().default(0),
+  skipped: boolean("skipped").notNull().default(false),
+  liked: boolean("liked").notNull().default(false),
+  replays: integer("replays").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const songLikes = pgTable("song_likes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  songId: varchar("song_id").notNull().references(() => songs.id),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const songSaves = pgTable("song_saves", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  songId: varchar("song_id").notNull().references(() => songs.id),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const momentLikes = pgTable("moment_likes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  momentId: varchar("moment_id").notNull().references(() => moments.id),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export const insertSongSchema = createInsertSchema(songs).omit({ id: true, createdAt: true });
+export const insertMomentSchema = createInsertSchema(moments).omit({ id: true, createdAt: true });
+export const insertBehaviorLogSchema = createInsertSchema(behaviorLogs).omit({ id: true, createdAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+export type InsertSong = z.infer<typeof insertSongSchema>;
+export type Song = typeof songs.$inferSelect;
+
+export type InsertMoment = z.infer<typeof insertMomentSchema>;
+export type Moment = typeof moments.$inferSelect;
+
+export type InsertBehaviorLog = z.infer<typeof insertBehaviorLogSchema>;
+export type BehaviorLog = typeof behaviorLogs.$inferSelect;

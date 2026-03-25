@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import SongCard from "@/components/Feed/SongCard";
-import { Song } from "@/lib/dummyData";
-import { generateFeedSegment, generateMoodFeedSegment } from "@/lib/recommendation";
-import { Sparkles, Activity, Map, Disc, Music, Bot } from "lucide-react";
+import { ApiSong, api } from "@/lib/api";
+import { generateFeedSegment, generateMoodFeedSegment, setSongsPool } from "@/lib/recommendation";
+import { Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MOODS = ["For You", "Focus", "Night Drive", "Gym", "Study", "Chill", "Sad", "Hype"];
@@ -11,32 +12,46 @@ export default function Feed() {
   const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedMood, setSelectedMood] = useState("For You");
-  
-  // State for infinite feed
-  const [feedItems, setFeedItems] = useState<Song[]>([]);
-  
-  // AI DJ Greeting state
+  const [feedItems, setFeedItems] = useState<ApiSong[]>([]);
   const [showGreeting, setShowGreeting] = useState(true);
+
+  // Fetch all songs from the API
+  const { data: allSongs, isLoading } = useQuery({
+    queryKey: ["songs"],
+    queryFn: () => api.getSongs(),
+  });
+
+  // Seed the recommendation engine once songs are loaded
+  useEffect(() => {
+    if (allSongs && allSongs.length > 0) {
+      setSongsPool(allSongs);
+      if (selectedMood === "For You") {
+        setFeedItems(generateFeedSegment() as ApiSong[]);
+      } else {
+        setFeedItems(generateMoodFeedSegment(selectedMood) as ApiSong[]);
+      }
+    }
+  }, [allSongs]);
 
   // Initialize or reset feed when mood changes
   useEffect(() => {
+    if (!allSongs || allSongs.length === 0) return;
     setActiveIndex(0);
     if (containerRef.current) {
       containerRef.current.scrollTop = 0;
     }
     
     if (selectedMood === "For You") {
-      setFeedItems(generateFeedSegment());
+      setFeedItems(generateFeedSegment() as ApiSong[]);
     } else {
-      setFeedItems(generateMoodFeedSegment(selectedMood));
+      setFeedItems(generateMoodFeedSegment(selectedMood) as ApiSong[]);
     }
     
-    // Hide greeting after 3 seconds when starting up
     if (selectedMood === "For You" && feedItems.length === 0) {
       const timer = setTimeout(() => setShowGreeting(false), 3500);
       return () => clearTimeout(timer);
     }
-  }, [selectedMood]);
+  }, [selectedMood, allSongs]);
 
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
@@ -63,8 +78,13 @@ export default function Feed() {
     }
   }, [activeIndex, feedItems.length, selectedMood, showGreeting]);
 
-  if (feedItems.length === 0) {
-    return <div className="h-[100dvh] w-full bg-black flex items-center justify-center text-white/50">Loading feed...</div>;
+  if (isLoading || feedItems.length === 0) {
+    return (
+      <div className="h-[100dvh] w-full bg-black flex flex-col items-center justify-center gap-4 text-white/50">
+        <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm">Loading your feed...</p>
+      </div>
+    );
   }
 
   // Get time of day for dynamic greeting

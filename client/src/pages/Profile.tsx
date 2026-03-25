@@ -1,7 +1,7 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote } from "lucide-react";
-import { dummySongs, dummyMoments } from "@/lib/dummyData";
-import { behaviorLogs } from "@/lib/tracking";
+import { api, ApiSong } from "@/lib/api";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 
@@ -9,35 +9,37 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState<'liked' | 'playlists' | 'saved' | 'moments' | 'history'>('liked');
   const [, setLocation] = useLocation();
 
-  // Mock profile data
+  const { data: userProfile } = useQuery({ queryKey: ["user-profile"], queryFn: () => api.getProfile() });
+  const { data: likedSongs = [] } = useQuery({ queryKey: ["liked-songs"], queryFn: () => api.getLikedSongs() });
+  const { data: savedSongs = [] } = useQuery({ queryKey: ["saved-songs"], queryFn: () => api.getSavedSongs() });
+  const { data: historyLogs = [] } = useQuery({ queryKey: ["history"], queryFn: () => api.getHistory() });
+  const { data: allSongs = [] } = useQuery({ queryKey: ["songs"], queryFn: () => api.getSongs() });
+
   const user = {
-    name: "Alex Vibes",
-    handle: "@alexvibes",
-    bio: "Late night drives & early morning coffees. Synthwave enthusiast.",
-    followers: 1240,
-    following: 432,
-    avatarUrl: "https://i.pravatar.cc/150?u=alex"
+    name: userProfile?.displayName || "Vibe Scroller",
+    handle: `@${userProfile?.username || "vibescroller"}`,
+    bio: userProfile?.bio || "Music is life.",
+    followers: userProfile?.followers || 0,
+    following: userProfile?.following || 0,
+    avatarUrl: userProfile?.avatarUrl || "https://i.pravatar.cc/150?u=vibescroller"
   };
 
-  // Content for tabs
-  const likedSongs = dummySongs;
-  const savedSongs = [...dummySongs].reverse();
   const playlists = [
-    { title: "Late Night Drive", count: 12, cover: dummySongs[0].coverUrl },
-    { title: "Gym Hype", count: 24, cover: dummySongs[3].coverUrl },
-    { title: "Focus Mode", count: 8, cover: dummySongs[1].coverUrl }
-  ];
-  
-  // Filter moments belonging to this user
-  const userMoments = dummyMoments.filter(m => m.user.name === user.name);
+    { title: "Late Night Drive", count: 12, cover: allSongs[0]?.coverUrl || "" },
+    { title: "Gym Hype", count: 24, cover: allSongs[3]?.coverUrl || allSongs[0]?.coverUrl || "" },
+    { title: "Focus Mode", count: 8, cover: allSongs[1]?.coverUrl || allSongs[0]?.coverUrl || "" }
+  ].filter(p => p.cover);
 
-  // Generate history from behavior logs or use dummy data if none exists
-  const listeningHistory = behaviorLogs.length > 0 
-    ? behaviorLogs.map(log => ({
-        ...dummySongs.find(s => s.id === log.songId)!,
-        playedAt: new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      })).filter(s => s.id) // Ensure valid songs
-    : dummySongs.map(s => ({ ...s, playedAt: 'Yesterday' }));
+  const listeningHistory = historyLogs.map(log => {
+    const song = allSongs.find(s => s.id === log.songId);
+    return song ? {
+      ...song,
+      playedAt: new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    } : null;
+  }).filter(Boolean) as (ApiSong & { playedAt: string })[];
+
+  // User moments would be moments authored by this user - we show a placeholder
+  const userMoments: any[] = [];
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -218,12 +220,12 @@ export default function Profile() {
                 {/* Background blur from cover */}
                 <div 
                   className="absolute inset-0 opacity-20 bg-cover bg-center blur-2xl" 
-                  style={{ backgroundImage: `url(${moment.song.coverUrl})` }}
+                  style={{ backgroundImage: `url(${moment.song?.coverUrl})` }}
                 />
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-xs font-bold bg-primary/20 text-primary px-3 py-1 rounded-full border border-primary/20">{moment.mood}</span>
-                    <span className="text-xs font-medium text-white/40">{moment.timestamp}</span>
+                    <span className="text-xs font-medium text-white/40">{new Date(moment.createdAt).toLocaleDateString()}</span>
                   </div>
                   
                   <div className="px-2 py-4">
@@ -237,11 +239,11 @@ export default function Profile() {
                   
                   <div className="flex items-center gap-3 pt-4 border-t border-white/10">
                     <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md">
-                      <img src={moment.song.coverUrl} alt="cover" className="w-full h-full object-cover" />
+                      <img src={moment.song?.coverUrl} alt="cover" className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-white">{moment.song.title}</p>
-                      <p className="text-xs text-white/50">{moment.song.artist}</p>
+                      <p className="text-sm font-semibold text-white">{moment.song?.title}</p>
+                      <p className="text-xs text-white/50">{moment.song?.artist}</p>
                     </div>
                     <button className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
                       <Play size={14} className="text-white fill-white ml-0.5" />
