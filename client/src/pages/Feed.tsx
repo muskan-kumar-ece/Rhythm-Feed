@@ -227,9 +227,41 @@ export default function Feed() {
   // Step 3: Loading
   if (isLoading || feedItems.length === 0) {
     return (
-      <div className="h-[100dvh] w-full bg-black flex flex-col items-center justify-center gap-4 text-white/50">
-        <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm">Loading your feed…</p>
+      <div className="h-[100dvh] w-full bg-black flex flex-col items-center justify-center gap-6 relative overflow-hidden">
+        {/* Animated background grid of blurred cover tiles */}
+        <div className="absolute inset-0 grid grid-cols-3 grid-rows-4 opacity-20 blur-lg scale-110 pointer-events-none">
+          {[...Array(12)].map((_, i) => (
+            <div
+              key={i}
+              className="bg-cover bg-center"
+              style={{ backgroundImage: `url(https://picsum.photos/seed/${i + 10}/200/200)` }}
+            />
+          ))}
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-black/80 pointer-events-none" />
+        {/* Logo + spinner */}
+        <div className="relative z-10 flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center shadow-[0_0_40px_rgba(var(--primary),0.3)]">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+          <div className="text-center">
+            <p className="text-white font-display font-bold text-xl">VibeScroll</p>
+            <p className="text-white/40 text-sm mt-1">Curating your feed…</p>
+          </div>
+          <div className="flex gap-1 mt-2">
+            {[0, 1, 2, 3, 4].map(i => (
+              <div
+                key={i}
+                className="w-1 bg-primary rounded-full"
+                style={{
+                  height: 8 + Math.sin(i) * 8,
+                  animation: `equalizer ${0.4 + i * 0.1}s ease-in-out infinite alternate`,
+                  animationDelay: `${i * 0.08}s`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -332,7 +364,18 @@ export default function Feed() {
         {feedItems.map((song, index) => {
           const isNear = Math.abs(index - activeIndex) <= 2;
           if (!isNear) {
-            return <div key={song.id} className="h-[100dvh] w-full snap-start snap-always bg-black" />;
+            return (
+              <div
+                key={song.id}
+                className="h-[100dvh] w-full snap-start snap-always bg-black relative overflow-hidden"
+              >
+                <div
+                  className="absolute inset-0 bg-cover bg-center opacity-25 scale-110 blur-2xl"
+                  style={{ backgroundImage: `url(${song.coverUrl})` }}
+                />
+                <div className="absolute inset-0 bg-black/60" />
+              </div>
+            );
           }
           const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
           return (

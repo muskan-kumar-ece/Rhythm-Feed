@@ -74,6 +74,8 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
   const [showShareModal, setShowShareModal] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [newComment, setNewComment] = useState("");
+  const [localComments, setLocalComments] = useState<{ id: number; text: string }[]>([]);
+  const [localCommentCount, setLocalCommentCount] = useState<number | null>(null);
   // Moment creation
   const [momentCaption, setMomentCaption]     = useState("");
   const [momentLyricIdx, setMomentLyricIdx]   = useState(0);
@@ -268,28 +270,29 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
 
   const handleContainerClick = (e: React.MouseEvent) => {
     if (showShareModal || showCommentsModal || showMomentsPanel) return;
-    
+
     const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300; // ms
-    
-    if (now - lastTapTime < DOUBLE_TAP_DELAY) {
-      // Double tap detected
+    const DOUBLE_TAP_WINDOW = 280;
+
+    if (now - lastTapTime < DOUBLE_TAP_WINDOW) {
+      // Double-tap: undo any play toggle from first tap, then like
+      setIsPlaying(prev => !prev); // revert first tap's toggle
       if (!isLiked) {
         setIsLiked(true);
         setShowHeartAnimation(true);
         setTimeout(() => setShowHeartAnimation(false), 1000);
         const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
-        api.likeSong(baseSongId).catch(() => setIsLiked(false));
+        api.likeSong(baseSongId)
+          .then(() => queryClient.invalidateQueries({ queryKey: ["liked-songs"] }))
+          .catch(() => setIsLiked(false));
       }
+      setLastTapTime(0); // reset so a third tap doesn't re-trigger
     } else {
-      // Single tap (play/pause) - wait a tiny bit to make sure it's not a double tap
-      setTimeout(() => {
-        if (Date.now() - now >= DOUBLE_TAP_DELAY) {
-          togglePlay(e);
-        }
-      }, DOUBLE_TAP_DELAY);
+      // Single tap: immediate play/pause — no delay
+      if (isPlaying) setPauseCount(p => p + 1);
+      setIsPlaying(p => !p);
     }
-    
+
     setLastTapTime(now);
   };
 
@@ -712,7 +715,7 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                         queryClient.invalidateQueries({ queryKey: ["moments-trending"] });
                         setMomentPosted(true);
                       } catch {
-                        // swallow — moment likely failed but don't crash the feed
+                        toast({ title: "Couldn't post", description: "Something went wrong. Try again.", variant: "destructive" });
                       } finally {
                         setIsPostingMoment(false);
                       }
@@ -813,8 +816,10 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-10 rounded-t-3xl">
-              <h3 className="font-display font-bold text-white">Comments <span className="text-white/50 text-sm font-normal ml-1">{song.comments.toLocaleString()}</span></h3>
-              <button 
+              <h3 className="font-display font-bold text-white">
+                Comments <span className="text-white/50 text-sm font-normal ml-1">{(localCommentCount ?? song.comments).toLocaleString()}</span>
+              </h3>
+              <button
                 onClick={() => setShowCommentsModal(false)}
                 className="p-2 rounded-full hover:bg-white/10 text-white/70 transition-colors"
               >
@@ -823,7 +828,6 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-              {/* Dummy Comments */}
               <div className="flex gap-3">
                 <div className="w-8 h-8 rounded-full bg-white/20 overflow-hidden flex-shrink-0">
                   <img src="https://i.pravatar.cc/150?u=a1" alt="User" className="w-full h-full object-cover" />
@@ -835,14 +839,11 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                   </div>
                   <p className="text-sm text-white/80">This beat drop is absolutely insane 🔥</p>
                   <div className="flex items-center gap-4 mt-2">
-                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1">
-                      <Heart size={12} /> 124
-                    </button>
+                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 124</button>
                     <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
                   </div>
                 </div>
               </div>
-
               <div className="flex gap-3">
                 <div className="w-8 h-8 rounded-full bg-white/20 overflow-hidden flex-shrink-0">
                   <img src="https://i.pravatar.cc/150?u=b2" alt="User" className="w-full h-full object-cover" />
@@ -854,14 +855,11 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                   </div>
                   <p className="text-sm text-white/80">Been listening to this on repeat all day.</p>
                   <div className="flex items-center gap-4 mt-2">
-                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1">
-                      <Heart size={12} /> 89
-                    </button>
+                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 89</button>
                     <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
                   </div>
                 </div>
               </div>
-              
               <div className="flex gap-3">
                 <div className="w-8 h-8 rounded-full bg-white/20 overflow-hidden flex-shrink-0">
                   <img src="https://i.pravatar.cc/150?u=c3" alt="User" className="w-full h-full object-cover" />
@@ -873,28 +871,60 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                   </div>
                   <p className="text-sm text-white/80">Does anyone know what synth they used for the lead?</p>
                   <div className="flex items-center gap-4 mt-2">
-                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1">
-                      <Heart size={12} /> 42
-                    </button>
+                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 42</button>
                     <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
                   </div>
                 </div>
               </div>
+              {/* User's own comments */}
+              {localComments.map(c => (
+                <div key={c.id} className="flex gap-3 animate-in slide-in-from-bottom-2 duration-300">
+                  <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 ring-1 ring-primary/50">
+                    <img src="https://i.pravatar.cc/150?u=vibescroller" alt="You" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-semibold text-white/90">vibescroller</span>
+                      <span className="text-xs text-white/40">just now</span>
+                    </div>
+                    <p className="text-sm text-white/90">{c.text}</p>
+                    <div className="flex items-center gap-4 mt-2">
+                      <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 0</button>
+                      <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="p-4 border-t border-white/10 bg-background sticky bottom-0">
               <div className="flex items-center gap-2 relative">
-                <input 
+                <input
                   type="text"
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newComment.trim()) {
+                      setLocalComments(prev => [...prev, { id: Date.now(), text: newComment.trim() }]);
+                      setLocalCommentCount(c => (c ?? song.comments) + 1);
+                      setNewComment("");
+                    }
+                  }}
                   placeholder="Add a comment..."
                   className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-primary text-white pr-10 transition-colors"
+                  data-testid="input-comment-feed"
+                  autoFocus
                 />
-                <button 
+                <button
                   disabled={!newComment.trim()}
-                  onClick={() => setNewComment("")}
+                  onClick={() => {
+                    if (!newComment.trim()) return;
+                    setLocalComments(prev => [...prev, { id: Date.now(), text: newComment.trim() }]);
+                    setLocalCommentCount(c => (c ?? song.comments) + 1);
+                    setNewComment("");
+                  }}
                   className="absolute right-2 p-1.5 rounded-full bg-primary text-primary-foreground disabled:opacity-50 disabled:bg-white/10 disabled:text-white/30 transition-all"
+                  data-testid="button-submit-comment-feed"
                 >
                   <Plus size={16} />
                 </button>
