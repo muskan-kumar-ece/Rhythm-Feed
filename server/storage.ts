@@ -30,6 +30,8 @@ export interface IStorage {
   updateSongStatus(songId: string, status: "approved" | "rejected", rejectionReason?: string): Promise<Song | undefined>;
   updateSongMetadata(songId: string, data: Partial<Pick<Song, "title" | "artist" | "mood" | "features" | "lyrics" | "aiTags">>): Promise<Song | undefined>;
   getPendingSongs(): Promise<Song[]>;
+  getAdminSongs(status?: string): Promise<Song[]>;
+  getArtistUploadCount(artistName: string): Promise<number>;
   getSongStats(songId: string): Promise<{ plays: number; likes: number; skips: number; completions: number; engagementScore: number }>;
   getArtistSongsAll(userId: string): Promise<Song[]>;
 
@@ -161,6 +163,18 @@ export class DatabaseStorage implements IStorage {
 
   async getPendingSongs(): Promise<Song[]> {
     return db.select().from(songs).where(eq(songs.status, "pending")).orderBy(desc(songs.createdAt));
+  }
+
+  async getAdminSongs(status?: string): Promise<Song[]> {
+    if (!status || status === "all") {
+      return db.select().from(songs).orderBy(desc(songs.createdAt));
+    }
+    return db.select().from(songs).where(eq(songs.status, status as "pending" | "approved" | "rejected")).orderBy(desc(songs.createdAt));
+  }
+
+  async getArtistUploadCount(artistName: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)::int` }).from(songs).where(eq(songs.artist, artistName));
+    return result[0]?.count ?? 0;
   }
 
   async getSongStats(songId: string): Promise<{ plays: number; likes: number; skips: number; completions: number; engagementScore: number }> {

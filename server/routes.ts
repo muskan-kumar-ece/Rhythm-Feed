@@ -358,6 +358,36 @@ export async function registerRoutes(
     res.json(pending);
   });
 
+  // All admin songs with optional ?status= filter
+  app.get("/api/admin/songs", async (req: Request, res: Response) => {
+    const status = req.query.status as string | undefined;
+    const result = await storage.getAdminSongs(status);
+    res.json(result);
+  });
+
+  // Artist upload count
+  app.get("/api/admin/artist-uploads", async (req: Request, res: Response) => {
+    const artistName = req.query.artist as string;
+    if (!artistName) return res.status(400).json({ message: "artist param required" });
+    const count = await storage.getArtistUploadCount(artistName);
+    res.json({ count });
+  });
+
+  // Update song metadata (admin path)
+  app.put("/api/admin/songs/:id/metadata", async (req: Request, res: Response) => {
+    const song = await storage.getSong(req.params.id);
+    if (!song) return res.status(404).json({ message: "Song not found" });
+    const { title, artist, mood, genre } = req.body;
+    const features = song.features && genre ? { ...song.features, genre: [genre] } : song.features;
+    const updated = await storage.updateSongMetadata(song.id, {
+      ...(title  && { title }),
+      ...(artist && { artist }),
+      ...(mood   && { mood }),
+      ...(features && { features }),
+    });
+    res.json(updated);
+  });
+
   app.post("/api/admin/songs/:id/approve", async (req: Request, res: Response) => {
     const song = await storage.updateSongStatus(req.params.id, "approved");
     if (!song) return res.status(404).json({ message: "Song not found" });
@@ -369,6 +399,25 @@ export async function registerRoutes(
     const song = await storage.updateSongStatus(req.params.id, "rejected", reason);
     if (!song) return res.status(404).json({ message: "Song not found" });
     res.json({ success: true, song });
+  });
+
+  // Bulk approve
+  app.post("/api/admin/songs/bulk-approve", async (req: Request, res: Response) => {
+    const { ids } = req.body as { ids: string[] };
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: "ids array required" });
+    const results = await Promise.allSettled(ids.map(id => storage.updateSongStatus(id, "approved")));
+    const succeeded = results.filter(r => r.status === "fulfilled").length;
+    res.json({ success: true, succeeded, total: ids.length });
+  });
+
+  // Bulk reject
+  app.post("/api/admin/songs/bulk-reject", async (req: Request, res: Response) => {
+    const { ids, reason } = req.body as { ids: string[]; reason?: string };
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: "ids array required" });
+    const rejectReason = reason || "Does not meet content guidelines";
+    const results = await Promise.allSettled(ids.map(id => storage.updateSongStatus(id, "rejected", rejectReason)));
+    const succeeded = results.filter(r => r.status === "fulfilled").length;
+    res.json({ success: true, succeeded, total: ids.length });
   });
 
   // ── AI DJ Session ─────────────────────────────────────────────────────────

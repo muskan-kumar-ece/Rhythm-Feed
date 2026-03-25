@@ -258,10 +258,22 @@ export const api = {
 
   // Admin moderation
   getPendingSongs: () => request<ApiSong[]>("/api/admin/pending"),
+  getAdminSongs: (status?: string) => request<ApiSong[]>(`/api/admin/songs${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  getArtistUploadCount: (artistName: string) => request<{ count: number }>(`/api/admin/artist-uploads?artist=${encodeURIComponent(artistName)}`),
   approveSong: (songId: string) => request<{ success: boolean; song: ApiSong }>(`/api/admin/songs/${songId}/approve`, { method: "POST" }),
   rejectSong: (songId: string, reason: string) => request<{ success: boolean; song: ApiSong }>(`/api/admin/songs/${songId}/reject`, {
     method: "POST",
     body: JSON.stringify({ reason }),
+  }),
+  adminUpdateMetadata: (songId: string, data: { title?: string; artist?: string; mood?: string; genre?: string }) =>
+    request<ApiSong>(`/api/admin/songs/${songId}/metadata`, { method: "PUT", body: JSON.stringify(data) }),
+  bulkApproveSongs: (ids: string[]) => request<{ success: boolean; succeeded: number; total: number }>("/api/admin/songs/bulk-approve", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  }),
+  bulkRejectSongs: (ids: string[], reason?: string) => request<{ success: boolean; succeeded: number; total: number }>("/api/admin/songs/bulk-reject", {
+    method: "POST",
+    body: JSON.stringify({ ids, reason }),
   }),
 
   // Artist follows
