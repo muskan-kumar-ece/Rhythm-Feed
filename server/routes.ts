@@ -742,5 +742,99 @@ export async function registerRoutes(
     res.json(userMoments);
   });
 
+  // ── Artist Spotlights ─────────────────────────────────────────────────────
+
+  // List approved spotlights
+  app.get("/api/spotlights", async (req: Request, res: Response) => {
+    const limit = parseInt(req.query.limit as string) || 20;
+    const tag   = req.query.tag as string | undefined;
+    const artist = req.query.artist as string | undefined;
+
+    if (artist) {
+      return res.json(await storage.getArtistSpotlights(artist));
+    }
+    if (tag) {
+      return res.json(await storage.getSpotlightsByTag(tag));
+    }
+    res.json(await storage.getSpotlights(limit));
+  });
+
+  // Single spotlight
+  app.get("/api/spotlights/:id", async (req: Request, res: Response) => {
+    const spot = await storage.getSpotlight(req.params.id);
+    if (!spot) return res.status(404).json({ message: "Not found" });
+    res.json(spot);
+  });
+
+  // Record a view
+  app.post("/api/spotlights/:id/view", async (req: Request, res: Response) => {
+    await storage.incrementSpotlightView(req.params.id);
+    res.json({ success: true });
+  });
+
+  // Like / unlike
+  app.get("/api/spotlights/:id/liked", async (req: Request, res: Response) => {
+    const liked = await storage.isSpotlightLiked(DEMO_USER_ID, req.params.id);
+    res.json({ liked });
+  });
+
+  app.post("/api/spotlights/:id/like", async (req: Request, res: Response) => {
+    await storage.likeSpotlight(DEMO_USER_ID, req.params.id);
+    res.json({ success: true, liked: true });
+  });
+
+  app.delete("/api/spotlights/:id/like", async (req: Request, res: Response) => {
+    await storage.unlikeSpotlight(DEMO_USER_ID, req.params.id);
+    res.json({ success: true, liked: false });
+  });
+
+  // Upload spotlight (audio or video clip)
+  app.post(
+    "/api/spotlights/upload",
+    upload.fields([
+      { name: "media", maxCount: 1 },
+      { name: "cover", maxCount: 1 },
+    ]),
+    async (req: Request, res: Response) => {
+      const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+      const mediaFile = files?.["media"]?.[0];
+      const coverFile = files?.["cover"]?.[0];
+
+      if (!mediaFile) return res.status(400).json({ message: "Media file is required" });
+
+      const { artistName, title, description, prompt, tags, durationSeconds } = req.body;
+      if (!artistName || !title) {
+        if (mediaFile) fs.unlink(mediaFile.path, () => {});
+        if (coverFile)  fs.unlink(coverFile.path, () => {});
+        return res.status(400).json({ message: "artistName and title are required" });
+      }
+
+      const isVideo   = /\.(mp4|mov|webm)$/i.test(mediaFile.originalname) || mediaFile.mimetype.startsWith("video/");
+      const mediaUrl  = `/uploads/${isVideo ? "audio" : "audio"}/${mediaFile.filename}`;
+      const coverUrl  = coverFile
+        ? `/uploads/covers/${coverFile.filename}`
+        : `https://i.pravatar.cc/400?u=${encodeURIComponent(artistName)}`;
+
+      const parsedTags = tags ? (Array.isArray(tags) ? tags : String(tags).split(",").map((t: string) => t.trim()).filter(Boolean)) : [];
+
+      const spotlight = await storage.createSpotlight({
+        artistName,
+        artistAvatarUrl: `https://i.pravatar.cc/150?u=${encodeURIComponent(artistName)}`,
+        title,
+        description:     description ?? "",
+        mediaType:       isVideo ? "video" : "audio",
+        mediaUrl,
+        coverUrl,
+        durationSeconds: parseInt(durationSeconds) || 0,
+        tags:            parsedTags,
+        prompt:          prompt ?? "",
+        uploadedBy:      DEMO_USER_ID,
+        status:          "pending",
+      });
+
+      res.status(201).json({ spotlight });
+    }
+  );
+
   return httpServer;
 }

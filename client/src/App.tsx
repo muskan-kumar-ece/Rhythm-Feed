@@ -11,6 +11,7 @@ import Profile from "@/pages/Profile";
 import Search from "@/pages/Search";
 import Trending from "@/pages/Trending";
 import AdminDashboard from "@/pages/AdminDashboard";
+import Spotlight from "@/pages/Spotlight";
 import Navigation from "@/components/Navigation";
 
 function Router() {
@@ -24,6 +25,7 @@ function Router() {
           <Route path="/artist/:tab?" component={ArtistPortal} />
           <Route path="/moments" component={Moments} />
           <Route path="/profile" component={Profile} />
+          <Route path="/spotlight" component={Spotlight} />
           <Route path="/admin" component={AdminDashboard} />
           
           <Route component={NotFound} />

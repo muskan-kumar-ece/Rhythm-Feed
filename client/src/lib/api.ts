@@ -124,6 +124,25 @@ export type ApiUploadResult = {
   };
 };
 
+export type ApiSpotlight = {
+  id: string;
+  artistName: string;
+  artistAvatarUrl: string;
+  title: string;
+  description: string;
+  mediaType: "audio" | "video";
+  mediaUrl: string;
+  coverUrl: string;
+  durationSeconds: number;
+  tags: string[];
+  prompt: string;
+  views: number;
+  likes: number;
+  uploadedBy: string | null;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -275,6 +294,21 @@ export const api = {
     method: "POST",
     body: JSON.stringify({ ids, reason }),
   }),
+
+  // Spotlights
+  getSpotlights: (params?: { tag?: string; artist?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.tag)    qs.set("tag",    params.tag);
+    if (params?.artist) qs.set("artist", params.artist);
+    if (params?.limit)  qs.set("limit",  String(params.limit));
+    return request<ApiSpotlight[]>(`/api/spotlights${qs.toString() ? "?" + qs.toString() : ""}`);
+  },
+  getSpotlight: (id: string) => request<ApiSpotlight>(`/api/spotlights/${id}`),
+  recordSpotlightView: (id: string) => request<{ success: boolean }>(`/api/spotlights/${id}/view`, { method: "POST" }),
+  isSpotlightLiked: (id: string) => request<{ liked: boolean }>(`/api/spotlights/${id}/liked`),
+  likeSpotlight: (id: string) => request<{ success: boolean; liked: boolean }>(`/api/spotlights/${id}/like`, { method: "POST" }),
+  unlikeSpotlight: (id: string) => request<{ success: boolean; liked: boolean }>(`/api/spotlights/${id}/like`, { method: "DELETE" }),
+  uploadSpotlight: (formData: FormData) => upload<{ spotlight: ApiSpotlight }>("/api/spotlights/upload", formData),
 
   // Artist follows
   isFollowingArtist: (artistName: string) =>

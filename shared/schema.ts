@@ -103,13 +103,44 @@ export const artistFollows = pgTable("artist_follows", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+// Artist Spotlight Interviews
+export const spotlights = pgTable("spotlights", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  artistName: text("artist_name").notNull(),
+  artistAvatarUrl: text("artist_avatar_url").notNull().default("https://i.pravatar.cc/150?u=artist"),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  mediaType: text("media_type").notNull().default("audio"),  // "audio" | "video"
+  mediaUrl: text("media_url").notNull(),
+  coverUrl: text("cover_url").notNull(),
+  durationSeconds: integer("duration_seconds").notNull().default(0),
+  tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  prompt: text("prompt").notNull().default(""),          // interview prompt shown on card
+  views: integer("views").notNull().default(0),
+  likes: integer("likes").notNull().default(0),
+  uploadedBy: varchar("uploaded_by").references(() => users.id),
+  status: text("status").notNull().default("approved"),  // pending | approved | rejected
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const spotlightLikes = pgTable("spotlight_likes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  spotlightId: varchar("spotlight_id").notNull().references(() => spotlights.id),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertSongSchema = createInsertSchema(songs).omit({ id: true, createdAt: true });
 export const insertMomentSchema = createInsertSchema(moments).omit({ id: true, createdAt: true });
 export const insertBehaviorLogSchema = createInsertSchema(behaviorLogs).omit({ id: true, createdAt: true });
+export const insertSpotlightSchema = createInsertSchema(spotlights).omit({ id: true, createdAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+export type InsertSpotlight = z.infer<typeof insertSpotlightSchema>;
+export type Spotlight = typeof spotlights.$inferSelect;
 
 export type InsertSong = z.infer<typeof insertSongSchema>;
 export type Song = typeof songs.$inferSelect;

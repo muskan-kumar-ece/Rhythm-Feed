@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Home, MessageSquareQuote, PlusSquare, User, TrendingUp } from "lucide-react";
+import { Home, Mic2, PlusSquare, User, TrendingUp } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 
@@ -12,11 +12,11 @@ export default function Navigation() {
   const [tapped, setTapped] = useState<string | null>(null);
 
   const navItems = [
-    { icon: Home,               label: "Feed",     href: "/" },
-    { icon: TrendingUp,         label: "Trending", href: "/trending" },
-    { icon: MessageSquareQuote, label: "Moments",  href: "/moments" },
-    { icon: PlusSquare,         label: "Studio",   href: "/artist/dashboard" },
-    { icon: User,               label: "Profile",  href: "/profile" },
+    { icon: Home,       label: "Feed",      href: "/" },
+    { icon: TrendingUp, label: "Trending",  href: "/trending" },
+    { icon: Mic2,       label: "Spotlight", href: "/spotlight" },
+    { icon: PlusSquare, label: "Studio",    href: "/artist/dashboard" },
+    { icon: User,       label: "Profile",   href: "/profile" },
   ];
 
   const handleTap = (href: string) => {
@@ -31,8 +31,9 @@ export default function Navigation() {
         const Icon = item.icon;
         const isActive =
           location === item.href ||
-          (location.startsWith("/artist") && item.href.startsWith("/artist") && location !== "/" && item.href !== "/") ||
-          (location === "/trending" && item.href === "/trending");
+          (location.startsWith("/artist")    && item.href.startsWith("/artist")    && location !== "/" && item.href !== "/") ||
+          (location === "/trending"          && item.href === "/trending") ||
+          (location === "/spotlight"         && item.href === "/spotlight");
         const isTapped = tapped === item.href;
 
         return (

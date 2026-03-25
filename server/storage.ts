@@ -3,10 +3,12 @@ import { eq, desc, and, ilike, sql, gte, ne } from "drizzle-orm";
 import pg from "pg";
 import {
   users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes, artistFollows,
+  spotlights, spotlightLikes,
   type User, type InsertUser,
   type Song, type InsertSong,
   type Moment, type InsertMoment,
   type BehaviorLog, type InsertBehaviorLog,
+  type Spotlight, type InsertSpotlight,
 } from "@shared/schema";
 import type { DistributionPhase } from "./discovery";
 
@@ -31,6 +33,18 @@ export interface IStorage {
   updateSongMetadata(songId: string, data: Partial<Pick<Song, "title" | "artist" | "mood" | "features" | "lyrics" | "aiTags">>): Promise<Song | undefined>;
   getPendingSongs(): Promise<Song[]>;
   getAdminSongs(status?: string): Promise<Song[]>;
+
+  // Spotlights
+  getSpotlights(limit?: number): Promise<Spotlight[]>;
+  getSpotlight(id: string): Promise<Spotlight | undefined>;
+  createSpotlight(data: InsertSpotlight): Promise<Spotlight>;
+  incrementSpotlightView(id: string): Promise<void>;
+  likeSpotlight(userId: string, spotlightId: string): Promise<void>;
+  unlikeSpotlight(userId: string, spotlightId: string): Promise<void>;
+  isSpotlightLiked(userId: string, spotlightId: string): Promise<boolean>;
+  getArtistSpotlights(artistName: string): Promise<Spotlight[]>;
+  getSpotlightsByTag(tag: string): Promise<Spotlight[]>;
+  updateSpotlightStatus(id: string, status: "approved" | "rejected"): Promise<Spotlight | undefined>;
   getArtistUploadCount(artistName: string): Promise<number>;
   getSongStats(songId: string): Promise<{ plays: number; likes: number; skips: number; completions: number; engagementScore: number }>;
   getArtistSongsAll(userId: string): Promise<Song[]>;
@@ -559,6 +573,74 @@ export class DatabaseStorage implements IStorage {
       day1Retained:  (r?.day1_retained  as number) ?? 0,
       day7Retained:  (r?.day7_retained  as number) ?? 0,
     };
+  }
+
+  // ── Spotlights ────────────────────────────────────────────────────────────
+
+  async getSpotlights(limit = 20): Promise<Spotlight[]> {
+    return db.select().from(spotlights)
+      .where(eq(spotlights.status, "approved"))
+      .orderBy(desc(spotlights.createdAt))
+      .limit(limit);
+  }
+
+  async getSpotlight(id: string): Promise<Spotlight | undefined> {
+    const [row] = await db.select().from(spotlights).where(eq(spotlights.id, id));
+    return row;
+  }
+
+  async createSpotlight(data: InsertSpotlight): Promise<Spotlight> {
+    const [row] = await db.insert(spotlights).values(data).returning();
+    return row;
+  }
+
+  async incrementSpotlightView(id: string): Promise<void> {
+    await db.update(spotlights).set({ views: sql`${spotlights.views} + 1` }).where(eq(spotlights.id, id));
+  }
+
+  async likeSpotlight(userId: string, spotlightId: string): Promise<void> {
+    const exists = await this.isSpotlightLiked(userId, spotlightId);
+    if (!exists) {
+      await db.insert(spotlightLikes).values({ userId, spotlightId });
+      await db.update(spotlights).set({ likes: sql`${spotlights.likes} + 1` }).where(eq(spotlights.id, spotlightId));
+    }
+  }
+
+  async unlikeSpotlight(userId: string, spotlightId: string): Promise<void> {
+    const exists = await this.isSpotlightLiked(userId, spotlightId);
+    if (exists) {
+      await db.delete(spotlightLikes).where(
+        and(eq(spotlightLikes.userId, userId), eq(spotlightLikes.spotlightId, spotlightId))
+      );
+      await db.update(spotlights).set({ likes: sql`GREATEST(${spotlights.likes} - 1, 0)` }).where(eq(spotlights.id, spotlightId));
+    }
+  }
+
+  async isSpotlightLiked(userId: string, spotlightId: string): Promise<boolean> {
+    const [row] = await db.select().from(spotlightLikes).where(
+      and(eq(spotlightLikes.userId, userId), eq(spotlightLikes.spotlightId, spotlightId))
+    );
+    return !!row;
+  }
+
+  async getArtistSpotlights(artistName: string): Promise<Spotlight[]> {
+    return db.select().from(spotlights)
+      .where(and(eq(spotlights.artistName, artistName), eq(spotlights.status, "approved")))
+      .orderBy(desc(spotlights.createdAt));
+  }
+
+  async getSpotlightsByTag(tag: string): Promise<Spotlight[]> {
+    return db.select().from(spotlights)
+      .where(and(
+        eq(spotlights.status, "approved"),
+        sql`${spotlights.tags} ? ${tag}`
+      ))
+      .orderBy(desc(spotlights.createdAt));
+  }
+
+  async updateSpotlightStatus(id: string, status: "approved" | "rejected"): Promise<Spotlight | undefined> {
+    const [updated] = await db.update(spotlights).set({ status }).where(eq(spotlights.id, id)).returning();
+    return updated;
   }
 
   // ── Artist follows ────────────────────────────────────────────────────────
