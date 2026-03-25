@@ -8,6 +8,7 @@ import {
   type Moment, type InsertMoment,
   type BehaviorLog, type InsertBehaviorLog,
 } from "@shared/schema";
+import type { DistributionPhase } from "./discovery";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool);
@@ -49,9 +50,13 @@ export interface IStorage {
   // Behavior Logs
   logBehavior(log: InsertBehaviorLog): Promise<BehaviorLog>;
   getUserBehaviorLogs(userId: string): Promise<BehaviorLog[]>;
+  getSongBehaviorLogs(songId: string): Promise<BehaviorLog[]>;
 
   // Artist
   getArtistSongs(userId: string): Promise<Song[]>;
+
+  // Discovery boost
+  updateSongDistribution(songId: string, score: number, phase: DistributionPhase): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -202,8 +207,18 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(behaviorLogs).where(eq(behaviorLogs.userId, userId)).orderBy(desc(behaviorLogs.createdAt));
   }
 
+  async getSongBehaviorLogs(songId: string): Promise<BehaviorLog[]> {
+    return db.select().from(behaviorLogs).where(eq(behaviorLogs.songId, songId)).orderBy(desc(behaviorLogs.createdAt));
+  }
+
   async getArtistSongs(userId: string): Promise<Song[]> {
     return db.select().from(songs).where(eq(songs.uploadedBy, userId)).orderBy(desc(songs.createdAt));
+  }
+
+  async updateSongDistribution(songId: string, score: number, phase: DistributionPhase): Promise<void> {
+    await db.update(songs)
+      .set({ distributionScore: score, distributionPhase: phase })
+      .where(eq(songs.id, songId));
   }
 }
 

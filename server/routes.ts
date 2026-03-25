@@ -3,6 +3,14 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { rankSongsForUser } from "./ranking";
 import { insertMomentSchema, insertBehaviorLogSchema, insertSongSchema } from "@shared/schema";
+import {
+  evaluateSongDistribution,
+  computeMetrics,
+  classifyEngagement,
+  scoreToPhase,
+  NEW_SONG_SCORE,
+  NEW_SONG_PHASE,
+} from "./discovery";
 import { z } from "zod";
 
 // For this app we use a single demo user id for all actions (no auth system yet)
@@ -50,7 +58,12 @@ export async function registerRoutes(
   app.post("/api/songs", async (req: Request, res: Response) => {
     const result = insertSongSchema.safeParse({ ...req.body, uploadedBy: DEMO_USER_ID });
     if (!result.success) return res.status(400).json({ message: result.error.message });
-    const song = await storage.createSong(result.data);
+    // New songs enter the discovery pipeline at test phase — small audience first
+    const song = await storage.createSong({
+      ...result.data,
+      distributionScore: NEW_SONG_SCORE,
+      distributionPhase: NEW_SONG_PHASE,
+    });
     res.status(201).json(song);
   });
 
@@ -135,6 +148,17 @@ export async function registerRoutes(
     if (!result.success) return res.status(400).json({ message: result.error.message });
     const log = await storage.logBehavior(result.data);
     res.status(201).json(log);
+
+    // Fire-and-forget: re-evaluate distribution for this song after new signal
+    const song = await storage.getSong(result.data.songId);
+    if (song && song.distributionPhase !== "full") {
+      evaluateSongDistribution(
+        song.id,
+        song.distributionScore,
+        song.distributionPhase as any,
+        storage
+      ).catch(err => console.error("[discovery] evaluation error:", err));
+    }
   });
 
   app.get("/api/behavior", async (_req: Request, res: Response) => {
@@ -157,6 +181,49 @@ export async function registerRoutes(
   app.get("/api/artist/songs", async (_req: Request, res: Response) => {
     const artistSongs = await storage.getArtistSongs(DEMO_USER_ID);
     res.json(artistSongs);
+  });
+
+  // ── Discovery / Distribution ──────────────────────────────────────────────
+  // Status for a single song (used by artist studio)
+  app.get("/api/songs/:id/distribution", async (req: Request, res: Response) => {
+    const song = await storage.getSong(req.params.id);
+    if (!song) return res.status(404).json({ message: "Song not found" });
+
+    const logs  = await storage.getSongBehaviorLogs(song.id);
+    const metrics = logs.length >= 3 ? computeMetrics(logs) : null;
+    const engagement = metrics ? classifyEngagement(metrics) : null;
+
+    res.json({
+      songId:    song.id,
+      score:     song.distributionScore,
+      phase:     song.distributionPhase,
+      totalLogs: logs.length,
+      engagement,
+      metrics,
+    });
+  });
+
+  // Catalogue-wide distribution overview (artist dashboard)
+  app.get("/api/discovery/stats", async (_req: Request, res: Response) => {
+    const allSongs = await storage.getSongs();
+
+    const stats = await Promise.all(allSongs.map(async song => {
+      const logs    = await storage.getSongBehaviorLogs(song.id);
+      const metrics = logs.length >= 3 ? computeMetrics(logs) : null;
+      const engagement = metrics ? classifyEngagement(metrics) : null;
+      return {
+        songId:    song.id,
+        title:     song.title,
+        artist:    song.artist,
+        score:     song.distributionScore,
+        phase:     song.distributionPhase,
+        totalLogs: logs.length,
+        engagement,
+        metrics,
+      };
+    }));
+
+    res.json(stats);
   });
 
   return httpServer;

@@ -18,6 +18,7 @@
  */
 
 import type { Song, BehaviorLog } from "@shared/schema";
+import { applyDistributionGate } from "./discovery";
 
 // ─── Pool Types ───────────────────────────────────────────────────────────────
 
@@ -420,9 +421,12 @@ export interface RankedSong extends Song {
     recency: number;
     timeOfDay: number;
     poolBonus: number;
+    distributionMultiplier: number;
   };
   /** Which candidate pools nominated this song. */
   _pools: Pool[];
+  /** Discovery distribution phase (test / growth / broad / full / suppressed). */
+  _distributionPhase: string;
 }
 
 /**
@@ -437,8 +441,18 @@ export function rankSongsForUser(allSongs: Song[], logs: BehaviorLog[]): RankedS
   const hour    = new Date().getHours();
   const profile = buildTasteProfile(logs, allSongs);
 
-  // ── Stage 1: Candidate Generation ─────────────────────────────────────────
-  const candidates = generateCandidates(allSongs, profile);
+  // ── Stage 1: Candidate Generation (with Discovery Distribution Gate) ────────
+  // Apply a probabilistic gate so new / test-phase songs only appear in a
+  // fraction of feeds, proportional to their distributionScore (0–100).
+  // Songs at 100 always pass. Songs at 10 pass ~10% of the time.
+  // A minimum number of songs always pass to prevent empty feeds.
+  const gatedIds   = applyDistributionGate(
+    allSongs.map(s => ({ id: s.id, distributionScore: s.distributionScore })),
+    Math.min(4, allSongs.length) // always keep at least 4 songs
+  );
+  const gatedSongs = allSongs.filter(s => gatedIds.has(s.id));
+
+  const candidates = generateCandidates(gatedSongs, profile);
 
   // ── Stage 2: Scoring ───────────────────────────────────────────────────────
   const scored = candidates.map(candidate => {
@@ -451,7 +465,12 @@ export function rankSongsForUser(allSongs: Song[], logs: BehaviorLog[]): RankedS
     const timeOfDay   = _timeOfDayScore(song, hour);
     const poolBonus   = Math.min((pools.length - 1) * 10, 20);
 
-    const score = (
+    // Distribution multiplier: suppressed songs (low score) rank lower,
+    // fully-distributed songs rank at full strength.
+    // test=10 → 0.10×, growth=40 → 0.60×, broad=75 → 0.88×, full=100 → 1.0×
+    const distMult = Math.pow(song.distributionScore / 100, 0.6);
+
+    const rawScore = (
       engagement  * 0.35 +
       taste       * 0.30 +
       recentBehav * 0.15 +
@@ -460,16 +479,19 @@ export function rankSongsForUser(allSongs: Song[], logs: BehaviorLog[]): RankedS
       poolBonus
     );
 
+    const score = rawScore * distMult;
+
     return {
       candidate,
       score,
       breakdown: {
-        engagement:    Math.round(engagement  * 10) / 10,
-        taste:         Math.round(taste       * 10) / 10,
-        recentBehavior: Math.round(recentBehav * 10) / 10,
-        recency:       Math.round(recency     * 10) / 10,
+        engagement:             Math.round(engagement  * 10) / 10,
+        taste:                  Math.round(taste       * 10) / 10,
+        recentBehavior:         Math.round(recentBehav * 10) / 10,
+        recency:                Math.round(recency     * 10) / 10,
         timeOfDay,
         poolBonus,
+        distributionMultiplier: Math.round(distMult * 100) / 100,
       },
     };
   });
@@ -484,8 +506,9 @@ export function rankSongsForUser(allSongs: Song[], logs: BehaviorLog[]): RankedS
 
   return ranked.map(({ candidate, score }) => ({
     ...candidate.song,
-    _score:          Math.round(score * 100) / 100,
-    _scoreBreakdown: breakdownMap.get(candidate.song.id)!,
-    _pools:          candidate.pools,
+    _score:             Math.round(score * 100) / 100,
+    _scoreBreakdown:    breakdownMap.get(candidate.song.id)!,
+    _pools:             candidate.pools,
+    _distributionPhase: candidate.song.distributionPhase,
   }));
 }

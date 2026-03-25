@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, jsonb, timestamp, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -43,6 +43,9 @@ export const songs = pgTable("songs", {
   }>().notNull().default(sql`'{}'::jsonb`),
   uploadedBy: varchar("uploaded_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  // Discovery boost system
+  distributionScore: real("distribution_score").notNull().default(100),
+  distributionPhase: text("distribution_phase").notNull().default("full"),
 });
 
 export const moments = pgTable("moments", {

@@ -81,6 +81,55 @@ Lightweight assembler that draws from the server-ranked pool:
   - Slot 5: top 60% (mid-tier personalized)
   - Slot 6: most recently uploaded
 
+## Discovery Boost System (`server/discovery.ts`)
+
+Every newly uploaded song enters the discovery pipeline at `test` phase and advances (or is suppressed) automatically based on real engagement data.
+
+### Distribution phases
+
+| Phase | Score | Feed inclusion | Description |
+|---|---|---|---|
+| `test` | 10 | ~10% of feeds | Brand-new, shown to a small sample first |
+| `growth` | 40 | ~40% of feeds | Proven early engagement; ramping up |
+| `broad` | 75 | ~75% of feeds | Strong signal; near-full distribution |
+| `full` | 100 | 100% of feeds | Fully distributed (default for existing catalogue) |
+| `suppressed` | 3–5 | ~3–5% of feeds | Poor engagement; near-hidden but discoverable |
+
+### Evaluation trigger
+After every `POST /api/behavior` for a song not yet in `full` phase, the engine evaluates asynchronously (fire-and-forget) without blocking the API response.
+
+Minimum 3 behavior logs are required before any decision is made.
+
+### Tracked metrics
+- **Completion rate** — fraction of listens that were not skipped
+- **Skip rate** — fraction of listens skipped  
+- **Avg replays** — average number of replays per listen
+- **Like rate** — fraction of listens that resulted in a like
+- **Avg duration** — average listen duration in seconds
+
+### Classification thresholds
+- **High engagement**: completion ≥ 55% or like rate ≥ 12% or (completion ≥ 55% + duration ≥ 20s)
+- **Low engagement**: skip rate ≥ 65% with no likes or replays
+- **Neutral**: everything else (gentle +5 pts nudge)
+
+### Promotion ladder (high engagement)
+- `test (≤15)` → multiply × 4, cap at 40 → `growth`
+- `growth (≤50)` → multiply × 2, cap at 75 → `broad`
+- `broad (≤85)` → multiply × 1.4, cap at 100 → `full`
+
+### Suppression (low engagement)
+Score × 0.4, floor at 3 → `suppressed`
+
+### Integration with ranking (Stage 1)
+The distribution gate runs before candidate generation:
+1. Each song passes with probability `distributionScore / 100`
+2. A minimum of 4 songs always pass (fallback: highest-scored gated songs)
+3. Songs that pass get a `distributionMultiplier = (score/100)^0.6` applied to their Stage 2 score (test=0.10×, growth=0.60×, full=1.0×)
+
+### New API endpoints
+- `GET /api/songs/:id/distribution` — score, phase, totalLogs, engagement classification, raw metrics for a single song
+- `GET /api/discovery/stats` — catalogue-wide overview with all songs' distribution status
+
 ## API Routes
 
 All routes under `/api`:
