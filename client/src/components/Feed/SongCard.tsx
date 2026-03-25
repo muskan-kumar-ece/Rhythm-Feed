@@ -213,6 +213,7 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
           energy:      song.features.energy,
           liked:       isLiked,
           skipped:     isSkip,
+          replays,
           durationSec: durationRounded,
         });
         // Notify Feed.tsx that a session event occurred (used for adaptive re-ranking)

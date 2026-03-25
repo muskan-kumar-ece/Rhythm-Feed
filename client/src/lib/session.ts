@@ -6,14 +6,10 @@
  * boost songs matching the user's *right-now* mood instead of only relying on
  * long-term history.
  *
- * Session lifecycle
- * ─────────────────
- * A "session" is a continuous listening period.  If more than SESSION_TIMEOUT_MS
- * passes between two interactions the session is automatically reset so stale
- * context from yesterday's playlist doesn't colour today's feed.
- *
- * The context is sent to /api/songs/ranked as ?ctx=<url-encoded-json>.
- * The server then applies a dedicated 20%-weight scoring component.
+ * Additionally tracks:
+ * - Negative preferences from skipped songs (moods/genres to suppress)
+ * - Replay boosts from replayed songs (moods/genres to amplify)
+ * - Cold-start context from onboarding prefs for first-time users
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -24,92 +20,109 @@ export interface SessionEntry {
   artist:      string;
   moods:       string[];
   genres:      string[];
-  energy:      string;       // "high" | "medium" | "low"
+  energy:      string;
   liked:       boolean;
   skipped:     boolean;
+  replays:     number;
   durationSec: number;
-  playedAt:    number;       // unix ms
+  playedAt:    number;
 }
 
 export interface SessionContext {
-  /** IDs of the last 10 listened (non-skipped) songs. */
   recentSongIds:  string[];
-  /** Top 3 moods by frequency across completed listens. */
   sessionMoods:   string[];
-  /** Top 3 genres by frequency across completed listens. */
   sessionGenres:  string[];
-  /** Dominant energy level ("high" | "medium" | "low"). */
   sessionEnergy:  string;
-  /** Energy trend across the last 5 songs ("up" | "down" | "stable"). */
   energyDrift:    string;
-  /** Total songs recorded in this session (including skips). */
   sessionLength:  number;
-  /** Unix ms when the session started. */
   startedAt:      number;
+  negativePreferences?: {
+    moods:  Record<string, number>;
+    genres: Record<string, number>;
+  };
+  replayBoosts?: {
+    moods:  Record<string, number>;
+    genres: Record<string, number>;
+  };
+  isColdStart?:     boolean;
+  onboardingPrefs?: { genres: string[]; moods: string[] };
+}
+
+export interface OnboardingPrefs {
+  moods:       string[];
+  genres:      string[];
+  completedAt: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** Max inactivity before resetting the session (30 min). */
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
-
-/** Energy values used for drift comparison. */
+const SESSION_TIMEOUT_MS  = 30 * 60 * 1000;
+const ONBOARDING_KEY      = "vibescroll_onboarding";
 const ENERGY_RANK: Record<string, number> = { high: 2, medium: 1, low: 0 };
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let _entries: SessionEntry[]  = [];
-let _sessionStartedAt: number = Date.now();
-let _lastActivityAt: number   = Date.now();
+let _entries:           SessionEntry[]                                    = [];
+let _sessionStartedAt:  number                                            = Date.now();
+let _lastActivityAt:    number                                            = Date.now();
+let _negativeProfile:   { moods: Record<string, number>; genres: Record<string, number> } = { moods: {}, genres: {} };
+let _replayBoosts:      { moods: Record<string, number>; genres: Record<string, number> } = { moods: {}, genres: {} };
 
 // ─── Session Reset ────────────────────────────────────────────────────────────
 
 function maybeResetSession() {
   if (Date.now() - _lastActivityAt > SESSION_TIMEOUT_MS) {
-    _entries          = [];
-    _sessionStartedAt = Date.now();
+    _entries           = [];
+    _sessionStartedAt  = Date.now();
+    _negativeProfile   = { moods: {}, genres: {} };
+    _replayBoosts      = { moods: {}, genres: {} };
   }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Record a song interaction.  Called by SongCard after a card becomes inactive
- * (alongside `trackListenBehavior` and `api.logBehavior`).
- */
 export function recordSessionPlay(entry: Omit<SessionEntry, "playedAt">) {
   maybeResetSession();
   _lastActivityAt = Date.now();
-
   _entries.push({ ...entry, playedAt: Date.now() });
-
-  // Keep only the last 20 entries so memory stays bounded
   if (_entries.length > 20) _entries = _entries.slice(-20);
+
+  // ── Negative preference tracking (aggressive skip learning) ────────────────
+  if (entry.skipped) {
+    for (const m of entry.moods) {
+      _negativeProfile.moods[m] = (_negativeProfile.moods[m] || 0) + 1;
+    }
+    for (const g of entry.genres) {
+      _negativeProfile.genres[g] = (_negativeProfile.genres[g] || 0) + 1;
+    }
+  }
+
+  // ── Replay boost tracking ───────────────────────────────────────────────────
+  if (!entry.skipped && entry.replays > 0) {
+    for (const m of entry.moods) {
+      _replayBoosts.moods[m] = (_replayBoosts.moods[m] || 0) + entry.replays;
+    }
+    for (const g of entry.genres) {
+      _replayBoosts.genres[g] = (_replayBoosts.genres[g] || 0) + entry.replays;
+    }
+  }
 }
 
-/** Return the current session length (total songs seen, including skips). */
 export function getSessionLength(): number {
   maybeResetSession();
   return _entries.length;
 }
 
-/**
- * Derive the `SessionContext` from the current session entries.
- * Returns `null` when fewer than 2 entries have been recorded
- * (not enough signal to be meaningful yet).
- */
 export function getSessionContext(): SessionContext | null {
   maybeResetSession();
   if (_entries.length < 2) return null;
 
-  // Only fully-listened songs contribute to inferred preferences
   const completed = _entries.filter(e => !e.skipped);
 
-  // ── Mood frequency ranking ────────────────────────────────────────────────
+  // ── Mood frequency (liked songs count 2×) ─────────────────────────────────
   const moodCount: Record<string, number> = {};
   for (const e of completed) {
     for (const m of e.moods) {
-      // Liked songs contribute 2× weight to mood count
       moodCount[m] = (moodCount[m] || 0) + (e.liked ? 2 : 1);
     }
   }
@@ -118,7 +131,7 @@ export function getSessionContext(): SessionContext | null {
     .slice(0, 3)
     .map(([m]) => m);
 
-  // ── Genre frequency ranking ───────────────────────────────────────────────
+  // ── Genre frequency ────────────────────────────────────────────────────────
   const genreCount: Record<string, number> = {};
   for (const e of completed) {
     for (const g of e.genres) {
@@ -130,35 +143,29 @@ export function getSessionContext(): SessionContext | null {
     .slice(0, 3)
     .map(([g]) => g);
 
-  // ── Dominant energy ───────────────────────────────────────────────────────
+  // ── Dominant energy ────────────────────────────────────────────────────────
   const energyCount: Record<string, number> = { high: 0, medium: 0, low: 0 };
   for (const e of completed) {
     const key = e.energy in energyCount ? e.energy : "medium";
     energyCount[key]++;
   }
-  const sessionEnergy = (
-    Object.entries(energyCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "medium"
-  );
+  const sessionEnergy =
+    Object.entries(energyCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "medium";
 
-  // ── Energy drift (compare first half vs second half of completed listens) ──
+  // ── Energy drift ───────────────────────────────────────────────────────────
   let energyDrift = "stable";
   if (completed.length >= 4) {
-    const half = Math.floor(completed.length / 2);
+    const half  = Math.floor(completed.length / 2);
     const early = completed.slice(0, half);
     const late  = completed.slice(half);
-
     const avgRank = (arr: SessionEntry[]) =>
       arr.reduce((s, e) => s + (ENERGY_RANK[e.energy] ?? 1), 0) / arr.length;
-
     const diff = avgRank(late) - avgRank(early);
     if      (diff >  0.3) energyDrift = "up";
     else if (diff < -0.3) energyDrift = "down";
   }
 
-  // ── Recent song IDs (non-skipped, last 10) ────────────────────────────────
-  const recentSongIds = completed
-    .slice(-10)
-    .map(e => e.songId);
+  const recentSongIds = completed.slice(-10).map(e => e.songId);
 
   return {
     recentSongIds,
@@ -168,22 +175,63 @@ export function getSessionContext(): SessionContext | null {
     energyDrift,
     sessionLength: _entries.length,
     startedAt:     _sessionStartedAt,
+    negativePreferences: {
+      moods:  { ..._negativeProfile.moods },
+      genres: { ..._negativeProfile.genres },
+    },
+    replayBoosts: {
+      moods:  { ..._replayBoosts.moods },
+      genres: { ..._replayBoosts.genres },
+    },
   };
 }
 
-/**
- * Read the top mood from the current session for display purposes.
- * Returns `null` when the session has fewer than 3 entries.
- */
 export function getSessionTopMood(): string | null {
   if (_entries.length < 3) return null;
-  const ctx = getSessionContext();
-  return ctx?.sessionMoods[0] ?? null;
+  return getSessionContext()?.sessionMoods[0] ?? null;
 }
 
-/** Fully reset the session (called on page reload or user log-out). */
 export function resetSession() {
   _entries          = [];
   _sessionStartedAt = Date.now();
   _lastActivityAt   = Date.now();
+  _negativeProfile  = { moods: {}, genres: {} };
+  _replayBoosts     = { moods: {}, genres: {} };
+}
+
+// ─── Onboarding Prefs ─────────────────────────────────────────────────────────
+
+export function getOnboardingPrefs(): OnboardingPrefs | null {
+  try {
+    const raw = localStorage.getItem(ONBOARDING_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveOnboardingPrefs(prefs: Omit<OnboardingPrefs, "completedAt">) {
+  const full: OnboardingPrefs = { ...prefs, completedAt: Date.now() };
+  localStorage.setItem(ONBOARDING_KEY, JSON.stringify(full));
+}
+
+/**
+ * Build a synthetic SessionContext from onboarding prefs.
+ * Used immediately after onboarding so the ranking engine has strong
+ * preference signal before the user has listened to any songs.
+ */
+export function buildColdStartContext(prefs: { genres: string[]; moods: string[] }): SessionContext {
+  return {
+    recentSongIds:  [],
+    sessionMoods:   prefs.moods,
+    sessionGenres:  prefs.genres,
+    sessionEnergy:  "medium",
+    energyDrift:    "stable",
+    sessionLength:  5,
+    startedAt:      Date.now(),
+    isColdStart:    true,
+    onboardingPrefs: { genres: prefs.genres, moods: prefs.moods },
+    negativePreferences: { moods: {}, genres: {} },
+    replayBoosts:        { moods: {}, genres: {} },
+  };
 }

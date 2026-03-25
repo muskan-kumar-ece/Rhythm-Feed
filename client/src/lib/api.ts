@@ -136,15 +136,20 @@ export const api = {
   getArtistSongs: () => request<ApiSong[]>("/api/artist/songs"),
 
   // AI DJ Session
-  getAIDJSession: () => request<{
-    greeting: string;
-    theme: string;
-    timeOfDay: string;
-    dominantMood: string;
-    hasHistory: boolean;
-    topMoods: string[];
-    playlist: ApiSong[];
-  }>("/api/ai-dj/session"),
+  getAIDJSession: (prefs?: { moods: string[]; genres: string[] } | null) => {
+    const url = prefs
+      ? `/api/ai-dj/session?prefs=${encodeURIComponent(JSON.stringify(prefs))}`
+      : "/api/ai-dj/session";
+    return request<{
+      greeting: string;
+      theme: string;
+      timeOfDay: string;
+      dominantMood: string;
+      hasHistory: boolean;
+      topMoods: string[];
+      playlist: ApiSong[];
+    }>(url);
+  },
 
   // Moments — extended
   getTrendingMoments: () => request<ApiMoment[]>("/api/moments/trending"),

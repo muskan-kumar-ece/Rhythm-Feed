@@ -6,11 +6,20 @@ import { cn } from "@/lib/utils";
 
 interface AIDJIntroProps {
   onReady: (playlist: ApiSong[], greeting: string, theme: string) => void;
+  /** Onboarding prefs for first-time users — used to generate a cold-start personalized session. */
+  prefs?: { moods: string[]; genres: string[] } | null;
 }
 
 type Phase = "loading" | "analyzing" | "reveal" | "starting";
 
-const ANALYZING_STEPS = [
+const ANALYZING_STEPS_NEW = [
+  "Locking in your moods & genres…",
+  "Finding your perfect match…",
+  "Curating your starter playlist…",
+  "Your vibe is ready",
+];
+
+const ANALYZING_STEPS_RETURN = [
   "Reading your listening history…",
   "Detecting your current vibe…",
   "Curating your personal playlist…",
@@ -28,13 +37,15 @@ const MOOD_COLORS: Record<string, string> = {
   default:     "from-primary/30 to-accent/20",
 };
 
-export default function AIDJIntro({ onReady }: AIDJIntroProps) {
+export default function AIDJIntro({ onReady, prefs }: AIDJIntroProps) {
   const [phase, setPhase]           = useState<Phase>("loading");
   const [stepIndex, setStepIndex]   = useState(0);
 
+  const ANALYZING_STEPS = prefs ? ANALYZING_STEPS_NEW : ANALYZING_STEPS_RETURN;
+
   const { data: session, isSuccess } = useQuery({
-    queryKey: ["ai-dj-session"],
-    queryFn:  () => api.getAIDJSession(),
+    queryKey: ["ai-dj-session", prefs ? JSON.stringify(prefs) : ""],
+    queryFn:  () => api.getAIDJSession(prefs),
     staleTime: Infinity,
   });
 

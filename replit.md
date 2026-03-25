@@ -154,6 +154,59 @@ All routes under `/api`:
 | GET | `/api/user/profile` | Demo user profile |
 | GET | `/api/artist/songs` | Songs uploaded by demo user |
 
+## First-Time Onboarding Flow
+
+New users (no `vibescroll_onboarding` in localStorage) are shown a two-step preference picker before any content:
+
+1. **Step 1 — Mood picker**: Tap to multi-select from 7 mood cards (Chill, Focus, Night Drive, Gym, Study, Sad, Hype), each with a unique color theme and emoji. Requires at least 1 selection.
+2. **Step 2 — Genre picker**: Tap to multi-select from 8 genre cards (Electronic, Hip-Hop, Pop, R&B, Indie, Jazz, Lo-Fi, Rock). Requires at least 1 selection.
+3. **Build animation**: "Building your vibe…" splash with animated progress bar and mood/genre tags.
+4. On completion, prefs are saved to `localStorage` as `vibescroll_onboarding = { moods, genres, completedAt }`, then the AI DJ intro fires immediately with cold-start context.
+
+The onboarding flow is implemented in `client/src/components/Onboarding.tsx`.
+
+### Cold-Start Session Context
+After onboarding, `buildColdStartContext(prefs)` creates a synthetic `SessionContext` with:
+- `isColdStart: true`
+- `onboardingPrefs: { genres, moods }` (stated prefs)
+- `sessionLength: 5` (bypasses the "too few listens" guard in the ranking engine)
+
+This context is passed to `GET /api/songs/ranked` so the ranking engine immediately weights songs at 55% session-context vs 20% normally. Songs matching the stated moods/genres score 72+ out of 100 vs 50 neutral.
+
+## Retention-Optimized First Feed
+
+### Cold-Start Feed Segment (`generateColdStartFeedSegment(prefs)`)
+- Scores every song by mood+genre match against onboarding prefs (30 pts per mood match, 22 pts per genre match) plus 50% of server `_score`
+- Picks artist-diverse top 5 (no same artist in first 3 slots)
+- Falls back to normal feed if match pool is too small
+- Appends a standard segment for infinite scroll
+- Used immediately after AI DJ intro for first-time users
+
+### Feed initialization order after onboarding
+1. DJ playlist (8 songs, already preference-filtered by cold-start session context)
+2. Cold-start segment (5 more matched songs from `generateColdStartFeedSegment`)
+3. Normal `generateFeedSegment()` for subsequent swipes
+
+## Aggressive Skip/Replay Learning (Within-Session)
+
+### Negative preference tracking (in-memory, per session)
+Every skip is recorded in `_negativeProfile.moods` and `_negativeProfile.genres` (module-level state in `session.ts`). These are included in `SessionContext.negativePreferences` on every ranked-songs request.
+
+**Penalty applied per song**: −18 pts per skip for each matching mood tag, −14 pts per skip for each matching genre tag, capped at −70 pts total.
+
+### Replay boost tracking (in-memory, per session)
+Every replay increments `_replayBoosts.moods` and `_replayBoosts.genres`. Included in `SessionContext.replayBoosts`.
+
+**Boost applied per song**: +15 pts per replay for each matching mood tag, +12 pts per replay for each matching genre tag, capped at +40 pts total.
+
+### How fast it kicks in
+- Skip 2 songs with "Sad" mood → all remaining "Sad" songs lose 36 pts (nearly disappear from feed)
+- Replay 2 songs with "Focus" mood → all "Focus" songs gain 30 pts (actively promoted)
+- These adjustments fire on every re-rank (every 3 swipes), so the feed adapts within the first 10 swipes
+
+### Key: `replays` now flows through the full signal chain
+`SongCard.tsx` passes `replays` count to `recordSessionPlay()` which updates `_replayBoosts` in real-time. The `SessionEntry` type now includes `replays: number`.
+
 ## AI Personal DJ System
 
 ### Server (`GET /api/ai-dj/session`)

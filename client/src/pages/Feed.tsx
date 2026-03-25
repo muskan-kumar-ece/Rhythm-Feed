@@ -2,9 +2,22 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import SongCard from "@/components/Feed/SongCard";
 import AIDJIntro from "@/components/Feed/AIDJIntro";
+import Onboarding from "@/components/Onboarding";
 import { ApiSong, api } from "@/lib/api";
-import { generateFeedSegment, generateMoodFeedSegment, setSongsPool } from "@/lib/recommendation";
-import { getSessionContext, getSessionTopMood } from "@/lib/session";
+import {
+  generateFeedSegment,
+  generateMoodFeedSegment,
+  generateColdStartFeedSegment,
+  setSongsPool,
+} from "@/lib/recommendation";
+import {
+  getSessionContext,
+  getSessionTopMood,
+  getOnboardingPrefs,
+  saveOnboardingPrefs,
+  buildColdStartContext,
+  type OnboardingPrefs,
+} from "@/lib/session";
 import { Bot, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,18 +27,35 @@ const MOODS = ["For You", "Focus", "Night Drive", "Gym", "Study", "Chill", "Sad"
 const DJ_INTRO_KEY = "vibescroll_dj_intro_shown";
 
 export default function Feed() {
-  const [activeIndex, setActiveIndex]     = useState(0);
-  const containerRef                      = useRef<HTMLDivElement>(null);
-  const [selectedMood, setSelectedMood]   = useState("For You");
-  const [feedItems, setFeedItems]         = useState<ApiSong[]>([]);
-  const [showGreeting, setShowGreeting]   = useState(true);
-  const [djGreeting, setDjGreeting]       = useState<string | null>(null);
-  const [djTheme, setDjTheme]             = useState<string | null>(null);
+  const [activeIndex, setActiveIndex]   = useState(0);
+  const containerRef                    = useRef<HTMLDivElement>(null);
+  const [selectedMood, setSelectedMood] = useState("For You");
+  const [feedItems, setFeedItems]       = useState<ApiSong[]>([]);
+  const [showGreeting, setShowGreeting] = useState(true);
+  const [djGreeting, setDjGreeting]     = useState<string | null>(null);
+  const [djTheme, setDjTheme]           = useState<string | null>(null);
 
-  // Show AI DJ intro on first session visit; skip on subsequent navigations back to feed
-  const [showDJIntro, setShowDJIntro] = useState(
-    () => !sessionStorage.getItem(DJ_INTRO_KEY)
+  // ── Onboarding state ─────────────────────────────────────────────────────────
+  const [onboardingPrefs, setOnboardingPrefs] = useState<OnboardingPrefs | null>(
+    () => getOnboardingPrefs()
   );
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !getOnboardingPrefs()
+  );
+
+  // Show AI DJ intro if: onboarding is done AND intro hasn't been shown this session
+  const [showDJIntro, setShowDJIntro] = useState(
+    () => !showOnboarding && !sessionStorage.getItem(DJ_INTRO_KEY)
+  );
+
+  // When onboarding completes, save prefs and transition to AI DJ intro
+  const handleOnboardingComplete = useCallback((prefs: { moods: string[]; genres: string[] }) => {
+    saveOnboardingPrefs(prefs);
+    const full: OnboardingPrefs = { ...prefs, completedAt: Date.now() };
+    setOnboardingPrefs(full);
+    setShowOnboarding(false);
+    setShowDJIntro(true); // Always show DJ intro right after onboarding
+  }, []);
 
   // ── Session awareness ────────────────────────────────────────────────────────
   const [sessionVersion, setSessionVersion] = useState(0);
@@ -43,20 +73,22 @@ export default function Feed() {
   // ── Ranked songs query ───────────────────────────────────────────────────────
   const { data: allSongs, isLoading } = useQuery({
     queryKey: ["ranked-songs", sessionVersion],
-    queryFn: () => api.getRankedSongs(getSessionContext()),
+    queryFn: () => {
+      const sessionCtx = getSessionContext();
+      // First-time users: use cold-start context based on onboarding prefs so
+      // the ranking engine immediately weights songs to their stated preferences.
+      const effectiveCtx = sessionCtx ?? (onboardingPrefs ? buildColdStartContext(onboardingPrefs) : null);
+      return api.getRankedSongs(effectiveCtx);
+    },
     staleTime: 2 * 60 * 1000,
   });
 
   // Seed the recommendation engine once songs are loaded.
-  // If the DJ intro is still showing (or just dismissed via onDJReady),
-  // we do NOT overwrite feedItems here — the DJ playlist takes precedence.
   useEffect(() => {
     if (!allSongs || allSongs.length === 0) return;
     setSongsPool(allSongs);
 
-    // Only set feedItems from the ranked pool when the DJ intro has already been
-    // dismissed (i.e., the user has seen the intro and the playlist has been set).
-    if (!showDJIntro && feedItems.length === 0) {
+    if (!showDJIntro && !showOnboarding && feedItems.length === 0) {
       if (selectedMood === "For You") {
         setFeedItems(generateFeedSegment() as ApiSong[]);
       } else {
@@ -65,7 +97,7 @@ export default function Feed() {
     }
   }, [allSongs]);
 
-  // Initialize or reset feed when mood changes
+  // Reset feed when mood filter changes
   useEffect(() => {
     if (!allSongs || allSongs.length === 0) return;
     setActiveIndex(0);
@@ -90,19 +122,21 @@ export default function Feed() {
     setDjTheme(theme);
     setShowDJIntro(false);
 
-    // Use the DJ-curated playlist as the first page of the feed
     if (allSongs && allSongs.length > 0) {
       setSongsPool(allSongs);
     }
-    const djFeed = [...playlist];
-    // Append more songs so infinite scroll still works
-    const rest = generateFeedSegment() as ApiSong[];
-    setFeedItems([...djFeed, ...rest]);
 
-    // Show the greeting banner briefly
+    // For cold-start users: append a preference-matched segment after the DJ playlist
+    // For returning users: use the standard segment generator
+    const extraSongs = onboardingPrefs
+      ? generateColdStartFeedSegment(onboardingPrefs) as ApiSong[]
+      : generateFeedSegment() as ApiSong[];
+
+    setFeedItems([...playlist, ...extraSongs]);
+
     setShowGreeting(true);
-    setTimeout(() => setShowGreeting(false), 4000);
-  }, [allSongs]);
+    setTimeout(() => setShowGreeting(false), 5000);
+  }, [allSongs, onboardingPrefs]);
 
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
@@ -123,7 +157,7 @@ export default function Feed() {
     }
   }, [activeIndex, feedItems.length, selectedMood, showGreeting]);
 
-  // ── Greeting text ────────────────────────────────────────────────────────────
+  // ── Greeting text ─────────────────────────────────────────────────────────────
   const hour = new Date().getHours();
   let timeOfDay = "Night";
   if (hour >= 5 && hour < 12) timeOfDay = "Morning";
@@ -142,20 +176,29 @@ export default function Feed() {
     ? djTheme
     : sessionTopMood ? "Session DJ — Live" : "AI Personal DJ";
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-  if (showDJIntro) {
-    return <AIDJIntro onReady={handleDJReady} />;
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  // Step 1: Onboarding (first-ever visit)
+  if (showOnboarding) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
+  // Step 2: AI DJ intro (once per browser session)
+  if (showDJIntro) {
+    return <AIDJIntro onReady={handleDJReady} prefs={onboardingPrefs} />;
+  }
+
+  // Step 3: Loading
   if (isLoading || feedItems.length === 0) {
     return (
       <div className="h-[100dvh] w-full bg-black flex flex-col items-center justify-center gap-4 text-white/50">
         <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm">Loading your feed...</p>
+        <p className="text-sm">Loading your feed…</p>
       </div>
     );
   }
 
+  // Step 4: Feed
   return (
     <div className="relative h-[100dvh] w-full bg-black">
 

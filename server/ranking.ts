@@ -31,6 +31,20 @@ export interface SessionContext {
   energyDrift:    string;
   sessionLength:  number;
   startedAt:      number;
+  /** Moods/genres the user has skipped this session — used to suppress similar songs. */
+  negativePreferences?: {
+    moods:  Record<string, number>;
+    genres: Record<string, number>;
+  };
+  /** Moods/genres from replayed songs — used to amplify similar songs. */
+  replayBoosts?: {
+    moods:  Record<string, number>;
+    genres: Record<string, number>;
+  };
+  /** True for first-time users who just completed onboarding. */
+  isColdStart?:     boolean;
+  /** Stated preferences from the onboarding flow. */
+  onboardingPrefs?: { genres: string[]; moods: string[] };
 }
 
 /**
@@ -244,43 +258,89 @@ function generateCandidates(allSongs: Song[], profile: TasteProfile): Candidate[
  * The score is then clamped to [0, 100].
  */
 function _sessionContextScore(song: Song, ctx: SessionContext | undefined): number {
-  if (!ctx || ctx.sessionLength < 2) return 50;
+  if (!ctx) return 50;
 
   const songMoods  = new Set(song.features.mood);
   const songGenres = new Set(song.features.genre);
 
+  // ── Cold start: use onboarding prefs (bypass sessionLength guard) ──────────
+  // First-time users have stated prefs but no listen history yet.
+  if (ctx.isColdStart && ctx.onboardingPrefs) {
+    let score = 20; // lower baseline so match bonuses stand out clearly
+    for (const m of ctx.onboardingPrefs.moods) {
+      if (songMoods.has(m)) score += 30; // strong boost per matching mood
+    }
+    for (const g of ctx.onboardingPrefs.genres) {
+      if (songGenres.has(g)) score += 22; // strong boost per matching genre
+    }
+    return Math.max(0, Math.min(score, 100));
+  }
+
+  // ── Regular session: require at least 2 entries for meaningful signal ──────
+  if (ctx.sessionLength < 2) return 50;
+
   let score = 50;
 
-  // ── Mood match ─────────────────────────────────────────────────────────────
   for (const m of ctx.sessionMoods) {
     if (songMoods.has(m)) score += 20;
   }
-
-  // ── Genre match ────────────────────────────────────────────────────────────
   for (const g of ctx.sessionGenres) {
     if (songGenres.has(g)) score += 15;
   }
-
-  // ── Energy match ───────────────────────────────────────────────────────────
   if (song.features.energy === ctx.sessionEnergy) score += 15;
-
-  // ── Energy drift ───────────────────────────────────────────────────────────
   if (ctx.energyDrift === "up"   && song.features.energy === "high") score += 10;
   if (ctx.energyDrift === "down" && song.features.energy === "low")  score += 10;
 
-  // ── Mood opposition penalty ────────────────────────────────────────────────
-  // Penalise songs whose mood would feel jarring relative to the session vibe.
   for (const sessionMood of ctx.sessionMoods) {
     const opposites = OPPOSING_MOODS[sessionMood] ?? [];
     for (const opp of opposites) {
       if (songMoods.has(opp)) {
         score -= 25;
-        break; // only penalise once per session mood to avoid stacking
+        break;
       }
     }
   }
 
   return Math.max(0, Math.min(score, 100));
+}
+
+/**
+ * Negative preference adjustment: penalise songs that share moods/genres with
+ * songs the user has skipped this session. Aggressive suppression so the feed
+ * stops showing more of what the user clearly doesn't want.
+ *
+ * Returns a negative number (0 to -70).
+ */
+function _negativePreferenceAdjustment(song: Song, ctx: SessionContext | undefined): number {
+  if (!ctx?.negativePreferences) return 0;
+  const { moods, genres } = ctx.negativePreferences;
+  let penalty = 0;
+  for (const m of song.features.mood) {
+    penalty += (moods[m] || 0) * 18;
+  }
+  for (const g of song.features.genre) {
+    penalty += (genres[g] || 0) * 14;
+  }
+  return -Math.min(penalty, 70);
+}
+
+/**
+ * Replay boost adjustment: reward songs that share moods/genres with songs the
+ * user replayed this session. Gives the user more of what they loved.
+ *
+ * Returns a positive number (0 to +40).
+ */
+function _replayBoostAdjustment(song: Song, ctx: SessionContext | undefined): number {
+  if (!ctx?.replayBoosts) return 0;
+  const { moods, genres } = ctx.replayBoosts;
+  let boost = 0;
+  for (const m of song.features.mood) {
+    boost += (moods[m] || 0) * 15;
+  }
+  for (const g of song.features.genre) {
+    boost += (genres[g] || 0) * 12;
+  }
+  return Math.min(boost, 40);
 }
 
 /**
@@ -557,6 +617,8 @@ export function rankSongsForUser(
   //   Recency / freshness  7%   – upload age decay
   //   Time of day          3%   – hour-based mood context
   //   + flat pool-consensus bonus
+  const isColdStart = sessionCtx?.isColdStart ?? false;
+
   const scored = candidates.map(candidate => {
     const { song, pools } = candidate;
 
@@ -567,22 +629,41 @@ export function rankSongsForUser(
     const recentBehav  = _recentBehaviorScore(song, profile);
     const timeOfDay    = _timeOfDayScore(song, hour);
     const poolBonus    = Math.min((pools.length - 1) * 10, 20);
+    const negAdj       = _negativePreferenceAdjustment(song, sessionCtx);
+    const repAdj       = _replayBoostAdjustment(song, sessionCtx);
 
     // Distribution multiplier: suppressed songs rank lower.
-    // test=10 → 0.10×, growth=40 → 0.60×, broad=75 → 0.88×, full=100 → 1.0×
     const distMult = Math.pow(song.distributionScore / 100, 0.6);
 
-    const rawScore = (
-      engagement  * 0.30 +
-      taste       * 0.25 +
-      session     * 0.20 +
-      recentBehav * 0.15 +
-      recency     * 0.07 +
-      timeOfDay   * 0.03 +
-      poolBonus
-    );
+    let rawScore: number;
 
-    const score = rawScore * distMult;
+    if (isColdStart) {
+      // Cold start: heavily favour session context (onboarding prefs) so the
+      // very first feed feels immediately relevant to what the user stated.
+      rawScore = (
+        engagement  * 0.25 +
+        taste       * 0.05 +
+        session     * 0.55 +
+        recency     * 0.10 +
+        timeOfDay   * 0.05 +
+        poolBonus
+      );
+    } else {
+      rawScore = (
+        engagement  * 0.30 +
+        taste       * 0.25 +
+        session     * 0.20 +
+        recentBehav * 0.15 +
+        recency     * 0.07 +
+        timeOfDay   * 0.03 +
+        poolBonus
+      );
+    }
+
+    // Apply session-level negative and replay adjustments on top of raw score.
+    rawScore = rawScore + negAdj + repAdj;
+
+    const score = Math.max(0, rawScore) * distMult;
 
     return {
       candidate,

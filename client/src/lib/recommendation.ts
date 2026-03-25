@@ -157,6 +157,73 @@ export function generateMoodFeedSegment(targetMood: string): ApiSong[] {
   return segment;
 }
 
+// ─── Cold-Start Feed Segment ──────────────────────────────────────────────────
+
+/**
+ * Generates the very first feed segment for a new user who just completed
+ * onboarding. Picks the highest-scoring songs that match their stated moods
+ * and genres, ensuring strong relevance from swipe 1.
+ *
+ * Rules:
+ * - Only songs matching at least one selected mood OR genre qualify
+ * - Sorted by match score + server _score so the best songs come first
+ * - No same artist in consecutive positions (diversity)
+ * - Falls back to top ranked songs if match pool is too small
+ */
+export function generateColdStartFeedSegment(prefs: { moods: string[]; genres: string[] }): ApiSong[] {
+  const pool = _rankedPool;
+  if (pool.length === 0) return [];
+
+  const moodSet  = new Set(prefs.moods);
+  const genreSet = new Set(prefs.genres);
+
+  // Score each song by preference match + server engagement score
+  const scored = pool.map(song => {
+    let matchScore = 0;
+    for (const m of song.features.mood) {
+      if (moodSet.has(m)) matchScore += 30;
+    }
+    for (const g of song.features.genre) {
+      if (genreSet.has(g)) matchScore += 22;
+    }
+    const serverScore = song._score || 0;
+    return { song, totalScore: matchScore + serverScore * 0.5 };
+  });
+
+  // Sort: preference-matching songs first, then by engagement
+  scored.sort((a, b) => b.totalScore - a.totalScore);
+
+  // Pick artist-diverse selection for first 5 slots
+  const selected: ApiSong[] = [];
+  const seenArtists  = new Set<string>();
+  const seenBaseIds  = new Set<string>();
+
+  for (const { song, totalScore: _ } of scored) {
+    if (selected.length >= 5) break;
+
+    const baseId = stripSuffix(song.id);
+    if (seenBaseIds.has(baseId)) continue;
+
+    // Avoid consecutive same artist in first 3 picks
+    if (seenArtists.has(song.artist) && selected.length < 3) continue;
+
+    selected.push(tagSong(song, "ranked", `cold-${selected.length}`));
+    seenArtists.add(song.artist);
+    seenBaseIds.add(baseId);
+    markSongShown(song.id);
+  }
+
+  // Pad with normal segment if not enough matched
+  if (selected.length < 5) {
+    const rest = generateFeedSegment();
+    selected.push(...rest.slice(0, 5 - selected.length));
+  }
+
+  // Append more so infinite scroll works immediately
+  const extra = generateFeedSegment();
+  return [...selected, ...extra];
+}
+
 // ─── Legacy exports (kept for compatibility with Feed.tsx) ────────────────────
 
 export function calculateViralScore(song: ApiSong): number {

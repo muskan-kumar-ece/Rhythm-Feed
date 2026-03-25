@@ -194,8 +194,15 @@ export async function registerRoutes(
   });
 
   // ── AI DJ Session ─────────────────────────────────────────────────────────
-  // Analyzes recent behavior to craft a personalized greeting + curated playlist.
-  app.get("/api/ai-dj/session", async (_req: Request, res: Response) => {
+  // Analyzes recent behavior (or onboarding prefs for first-time users) to
+  // craft a personalized greeting + curated playlist.
+  app.get("/api/ai-dj/session", async (req: Request, res: Response) => {
+    // Parse optional onboarding prefs sent by first-time users
+    let onboardingPrefs: { moods: string[]; genres: string[] } | null = null;
+    if (req.query.prefs) {
+      try { onboardingPrefs = JSON.parse(req.query.prefs as string); } catch { /* ignore */ }
+    }
+
     const [allSongs, logs] = await Promise.all([
       storage.getSongs(),
       storage.getUserBehaviorLogs(DEMO_USER_ID),
@@ -208,68 +215,114 @@ export async function registerRoutes(
     else if (hour >= 17 && hour < 21) timeOfDay = "evening";
     else                               timeOfDay = "latenight";
 
-    // Derive dominant mood from recent liked/completed sessions
-    const recentLogs = logs.slice(0, 30);
-    const moodWeight: Record<string, number> = {};
-    const songMap = new Map(allSongs.map(s => [s.id, s]));
-
-    for (const log of recentLogs) {
-      const song = songMap.get(log.songId);
-      if (!song || log.skipped) continue;
-      const weight = log.liked ? 2 : 1;
-      for (const m of song.features?.mood ?? []) {
-        moodWeight[m] = (moodWeight[m] || 0) + weight;
-      }
-    }
-
-    const topMoods = Object.entries(moodWeight)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([m]) => m);
-
-    const primaryMood = topMoods[0]?.toLowerCase() ?? "chill";
+    const recentLogs  = logs.slice(0, 30);
     const hasHistory  = recentLogs.length >= 3;
+    const isColdStart = onboardingPrefs !== null && !hasHistory;
+
+    // ── Mood signal ─────────────────────────────────────────────────────────
+    // For cold start: use onboarding prefs directly.
+    // For returning users: derive from behavior logs.
+    let topMoods:    string[];
+    let primaryMood: string;
+
+    if (isColdStart && onboardingPrefs) {
+      topMoods    = onboardingPrefs.moods.slice(0, 3);
+      primaryMood = topMoods[0]?.toLowerCase() ?? "chill";
+    } else {
+      const moodWeight: Record<string, number> = {};
+      const songMap = new Map(allSongs.map(s => [s.id, s]));
+      for (const log of recentLogs) {
+        const song = songMap.get(log.songId);
+        if (!song || log.skipped) continue;
+        const weight = log.liked ? 2 : 1;
+        for (const m of song.features?.mood ?? []) {
+          moodWeight[m] = (moodWeight[m] || 0) + weight;
+        }
+      }
+      topMoods    = Object.entries(moodWeight).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([m]) => m);
+      primaryMood = topMoods[0]?.toLowerCase() ?? "chill";
+    }
 
     // ── Greeting template matrix ────────────────────────────────────────────
     type GreetingDef = { greeting: string; theme: string };
+
+    // Cold start greetings — shown after onboarding ("We built your vibe")
+    const coldStartGreetings: Record<string, GreetingDef> = {
+      chill:        { greeting: `We built your vibe in seconds — your ${topMoods[0] || "Chill"} starter set is ready`,       theme: `${topMoods[0] || "Chill"} Starter` },
+      focus:        { greeting: `We built your vibe in seconds — diving into ${topMoods[0] || "Focus"} mode`,                 theme: `${topMoods[0] || "Focus"} Starter` },
+      hype:         { greeting: `We built your vibe in seconds — let's get you hyped`,                                        theme: "Hype Starter" },
+      gym:          { greeting: `We built your vibe in seconds — power up playlist incoming`,                                  theme: "Gym Starter" },
+      "night drive":{ greeting: `We built your vibe in seconds — cinematic night drive ready`,                                 theme: "Night Drive Starter" },
+      sad:          { greeting: `We built your vibe in seconds — a set that feels exactly right`,                              theme: "Feels Starter" },
+      study:        { greeting: `We built your vibe in seconds — zero distractions, pure focus`,                               theme: "Study Starter" },
+      default:      { greeting: `We built your vibe in seconds — here's your personalized starter set`,                       theme: `${topMoods[0] || "Vibe"} Starter` },
+    };
+
     const templates: Record<string, Record<string, GreetingDef>> = {
       morning: {
-        focus:      { greeting: "Rise and grind — your morning focus set",          theme: "Morning Focus" },
-        hype:       { greeting: "Good morning energy — wake up and go",              theme: "Morning Hype" },
-        study:      { greeting: "Early bird session — get in the zone",              theme: "Morning Study" },
-        default:    { greeting: "Good morning — here's a fresh start",              theme: "Morning Mix" },
+        focus:      { greeting: "Rise and grind — your morning focus set",              theme: "Morning Focus" },
+        hype:       { greeting: "Good morning energy — wake up and go",                  theme: "Morning Hype" },
+        study:      { greeting: "Early bird session — get in the zone",                  theme: "Morning Study" },
+        default:    { greeting: "Good morning — here's a fresh start",                  theme: "Morning Mix" },
       },
       afternoon: {
-        focus:      { greeting: "Afternoon deep work — stay locked in",             theme: "Afternoon Focus" },
-        chill:      { greeting: "Midday chill — take a breath",                     theme: "Afternoon Chill" },
-        study:      { greeting: "Study session loaded — no distractions",           theme: "Afternoon Study" },
-        gym:        { greeting: "Midday grind — power through",                     theme: "Afternoon Gym" },
-        default:    { greeting: "Here's your afternoon soundtrack",                 theme: "Afternoon Mix" },
+        focus:      { greeting: "Afternoon deep work — stay locked in",                 theme: "Afternoon Focus" },
+        chill:      { greeting: "Midday chill — take a breath",                         theme: "Afternoon Chill" },
+        study:      { greeting: "Study session loaded — no distractions",               theme: "Afternoon Study" },
+        gym:        { greeting: "Midday grind — power through",                         theme: "Afternoon Gym" },
+        default:    { greeting: "Here's your afternoon soundtrack",                     theme: "Afternoon Mix" },
       },
       evening: {
-        chill:      { greeting: "Unwind time — your evening vibe mix",              theme: "Evening Chill" },
-        "night drive": { greeting: "Golden hour to night drive — a cinematic journey", theme: "Night Drive" },
-        sad:        { greeting: "Feeling something tonight — let it out",           theme: "Evening Feels" },
-        hype:       { greeting: "Evening energy — let's go",                        theme: "Evening Hype" },
-        default:    { greeting: "Wind down your day the right way",                 theme: "Evening Session" },
+        chill:         { greeting: "Unwind time — your evening vibe mix",               theme: "Evening Chill" },
+        "night drive": { greeting: "Golden hour to night drive — a cinematic journey",  theme: "Night Drive" },
+        sad:           { greeting: "Feeling something tonight — let it out",            theme: "Evening Feels" },
+        hype:          { greeting: "Evening energy — let's go",                         theme: "Evening Hype" },
+        default:       { greeting: "Wind down your day the right way",                  theme: "Evening Session" },
       },
       latenight: {
-        chill:      { greeting: "Here's your late night chill mix",                 theme: "Late Night Chill" },
-        focus:      { greeting: "Late night focus — locked in while the world sleeps", theme: "Late Night Focus" },
-        sad:        { greeting: "For the quiet hours — a late night feels playlist", theme: "Late Night Feels" },
-        "night drive": { greeting: "It's late, the roads are yours",                theme: "Night Drive" },
-        default:    { greeting: "Late night VibeScroll — just you and the music",   theme: "Late Night" },
+        chill:         { greeting: "Here's your late night chill mix",                  theme: "Late Night Chill" },
+        focus:         { greeting: "Late night focus — locked in while the world sleeps", theme: "Late Night Focus" },
+        sad:           { greeting: "For the quiet hours — a late night feels playlist", theme: "Late Night Feels" },
+        "night drive": { greeting: "It's late, the roads are yours",                    theme: "Night Drive" },
+        default:       { greeting: "Late night VibeScroll — just you and the music",    theme: "Late Night" },
       },
     };
 
-    const timeGroup    = templates[timeOfDay];
-    const moodTemplate = timeGroup[primaryMood] ?? timeGroup["default"];
-    const noHistoryGreeting = { greeting: "Welcome to VibeScroll — here's what's hot right now", theme: "Trending Now" };
-    const { greeting, theme } = hasHistory ? moodTemplate : noHistoryGreeting;
+    let greeting: string;
+    let theme:    string;
+
+    if (isColdStart && onboardingPrefs) {
+      const tpl = coldStartGreetings[primaryMood] ?? coldStartGreetings["default"];
+      greeting  = tpl.greeting;
+      theme     = tpl.theme;
+    } else if (hasHistory) {
+      const tpl = templates[timeOfDay][primaryMood] ?? templates[timeOfDay]["default"];
+      greeting  = tpl.greeting;
+      theme     = tpl.theme;
+    } else {
+      greeting  = "Welcome to VibeScroll — here's what's hot right now";
+      theme     = "Trending Now";
+    }
+
+    // ── Build session context for playlist ranking ──────────────────────────
+    const sessionCtx = isColdStart && onboardingPrefs
+      ? {
+          recentSongIds:  [] as string[],
+          sessionMoods:   onboardingPrefs.moods,
+          sessionGenres:  onboardingPrefs.genres,
+          sessionEnergy:  "medium",
+          energyDrift:    "stable",
+          sessionLength:  5,
+          startedAt:      Date.now(),
+          isColdStart:    true as const,
+          onboardingPrefs,
+          negativePreferences: { moods: {} as Record<string, number>, genres: {} as Record<string, number> },
+          replayBoosts:        { moods: {} as Record<string, number>, genres: {} as Record<string, number> },
+        }
+      : undefined;
 
     // ── Curate 8 songs for the DJ playlist ─────────────────────────────────
-    const ranked = rankSongsForUser(allSongs, logs, null);
-    // Prefer songs matching the primary mood; fill from general ranking
+    const ranked = rankSongsForUser(allSongs, logs, sessionCtx);
     const moodMatched = ranked.filter(s =>
       s.features?.mood?.some(m => m.toLowerCase() === primaryMood)
     );
