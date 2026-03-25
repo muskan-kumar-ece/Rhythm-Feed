@@ -46,6 +46,10 @@ export const songs = pgTable("songs", {
   // Discovery boost system
   distributionScore: real("distribution_score").notNull().default(100),
   distributionPhase: text("distribution_phase").notNull().default("full"),
+  // Moderation system
+  status: text("status").notNull().default("approved"),
+  aiTags: jsonb("ai_tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  rejectionReason: text("rejection_reason"),
 });
 
 export const moments = pgTable("moments", {

@@ -11,15 +11,61 @@ import {
   NEW_SONG_SCORE,
   NEW_SONG_PHASE,
 } from "./discovery";
+import { analyzeTrack } from "./aiAnalysis";
 import { z } from "zod";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import express from "express";
 
 // For this app we use a single demo user id for all actions (no auth system yet)
 const DEMO_USER_ID = "demo-user-1";
+
+// ── Multer — file upload config ───────────────────────────────────────────────
+
+const UPLOAD_ROOT = path.resolve("uploads");
+const AUDIO_DIR   = path.join(UPLOAD_ROOT, "audio");
+const COVER_DIR   = path.join(UPLOAD_ROOT, "covers");
+[AUDIO_DIR, COVER_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
+
+const MAX_AUDIO_MB = 100;
+const MAX_IMG_MB   = 8;
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, file.fieldname === "audio" ? AUDIO_DIR : COVER_DIR);
+    },
+    filename: (_req, file, cb) => {
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${unique}${path.extname(file.originalname)}`);
+    },
+  }),
+  limits: { fileSize: MAX_AUDIO_MB * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.fieldname === "audio") {
+      if (/^audio\/(mpeg|wav|x-wav|mp3|flac|x-flac)/.test(file.mimetype) ||
+          /\.(mp3|wav|flac)$/i.test(file.originalname)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Audio must be MP3, WAV, or FLAC"));
+      }
+    } else {
+      if (/^image\//.test(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Cover must be an image file"));
+      }
+    }
+  },
+});
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Serve uploaded files statically
+  app.use("/uploads", express.static(UPLOAD_ROOT));
 
   // ── Songs ────────────────────────────────────────────────────────────────
   app.get("/api/songs", async (_req: Request, res: Response) => {
@@ -193,9 +239,136 @@ export async function registerRoutes(
   });
 
   // ── Artist / Studio ──────────────────────────────────────────────────────
+
+  // All songs for the authenticated artist (any status: pending/approved/rejected)
   app.get("/api/artist/songs", async (_req: Request, res: Response) => {
-    const artistSongs = await storage.getArtistSongs(DEMO_USER_ID);
+    const artistSongs = await storage.getArtistSongsAll(DEMO_USER_ID);
     res.json(artistSongs);
+  });
+
+  // Per-song stats for the artist
+  app.get("/api/artist/songs/:id/stats", async (req: Request, res: Response) => {
+    const stats = await storage.getSongStats(req.params.id);
+    res.json(stats);
+  });
+
+  // Edit song metadata (only pending songs)
+  app.put("/api/artist/songs/:id/metadata", async (req: Request, res: Response) => {
+    const song = await storage.getSong(req.params.id);
+    if (!song) return res.status(404).json({ message: "Song not found" });
+    const { title, artist, mood, genre, tempo, energy, lyricsText } = req.body;
+    const parsedLyrics = lyricsText
+      ? (lyricsText as string).split("\n").filter((l: string) => l.trim()).map((text: string, i: number) => ({ time: i * 3, text }))
+      : undefined;
+    const features = song.features ? {
+      ...song.features,
+      tempo:  tempo  ?? song.features.tempo,
+      energy: energy ?? song.features.energy,
+      genre:  genre  ? [genre] : song.features.genre,
+    } : undefined;
+    const updated = await storage.updateSongMetadata(song.id, {
+      ...(title   && { title }),
+      ...(artist  && { artist }),
+      ...(mood    && { mood }),
+      ...(features && { features }),
+      ...(parsedLyrics && { lyrics: parsedLyrics }),
+    });
+    res.json(updated);
+  });
+
+  // ── Upload — multipart audio + cover ─────────────────────────────────────
+  app.post(
+    "/api/upload",
+    upload.fields([
+      { name: "audio", maxCount: 1 },
+      { name: "cover", maxCount: 1 },
+    ]),
+    async (req: Request, res: Response) => {
+      const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+      const audioFile = files?.["audio"]?.[0];
+      const coverFile = files?.["cover"]?.[0];
+
+      if (!audioFile) return res.status(400).json({ message: "Audio file is required" });
+
+      const { title, artist, mood, genre, tempo, energy, lyricsText } = req.body;
+      if (!title || !artist || !mood) {
+        // Clean up uploaded files on validation error
+        if (audioFile) fs.unlink(audioFile.path, () => {});
+        if (coverFile) fs.unlink(coverFile.path, () => {});
+        return res.status(400).json({ message: "title, artist, and mood are required" });
+      }
+
+      const audioUrl = `/uploads/audio/${audioFile.filename}`;
+      const coverUrl = coverFile
+        ? `/uploads/covers/${coverFile.filename}`
+        : "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=500";
+
+      // AI analysis
+      const analysis = analyzeTrack({
+        title,
+        artist,
+        genre:  genre  ?? "pop",
+        mood:   mood   ?? "chill",
+        tempo:  (tempo  ?? "medium") as "slow" | "medium" | "fast",
+        energy: (energy ?? "medium") as "low" | "medium" | "high",
+        fileSizeBytes: audioFile.size,
+      });
+
+      // Parse optional lyrics
+      const parsedLyrics = lyricsText
+        ? (lyricsText as string).split("\n").filter((l: string) => l.trim()).map((text: string, i: number) => ({ time: i * 3, text }))
+        : [{ time: 0, text: "(Instrumental)" }];
+
+      // Build mood tags
+      const moodTags = mood ? [mood, ...analysis.moodCategories.filter(m => m !== mood)] : analysis.moodCategories;
+      const uniqueMoods = Array.from(new Set(moodTags));
+
+      const song = await storage.createSong({
+        title,
+        artist,
+        coverUrl,
+        audioUrl,
+        mood,
+        status: "pending",
+        aiTags: analysis.aiTags,
+        distributionScore: NEW_SONG_SCORE,
+        distributionPhase: NEW_SONG_PHASE,
+        uploadedBy: DEMO_USER_ID,
+        features: {
+          tempo:  analysis.tempo,
+          energy: analysis.energy,
+          genre:  genre ? [genre] : ["pop"],
+          mood:   uniqueMoods,
+          popularity: {
+            plays: 0, likes: 0, replays: 0, completions: 0, shares: 0,
+            recent24h: { plays: 0, likes: 0, replays: 0, comments: 0 },
+          },
+        },
+        lyrics: parsedLyrics,
+      });
+
+      res.status(201).json({ song, analysis });
+    }
+  );
+
+  // ── Moderation — admin endpoints ──────────────────────────────────────────
+
+  app.get("/api/admin/pending", async (_req: Request, res: Response) => {
+    const pending = await storage.getPendingSongs();
+    res.json(pending);
+  });
+
+  app.post("/api/admin/songs/:id/approve", async (req: Request, res: Response) => {
+    const song = await storage.updateSongStatus(req.params.id, "approved");
+    if (!song) return res.status(404).json({ message: "Song not found" });
+    res.json({ success: true, song });
+  });
+
+  app.post("/api/admin/songs/:id/reject", async (req: Request, res: Response) => {
+    const reason = (req.body.reason as string) || "Does not meet content guidelines";
+    const song = await storage.updateSongStatus(req.params.id, "rejected", reason);
+    if (!song) return res.status(404).json({ message: "Song not found" });
+    res.json({ success: true, song });
   });
 
   // ── AI DJ Session ─────────────────────────────────────────────────────────

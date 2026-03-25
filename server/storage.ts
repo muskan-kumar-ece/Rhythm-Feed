@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, desc, and, ilike, sql, gte } from "drizzle-orm";
+import { eq, desc, and, ilike, sql, gte, ne } from "drizzle-orm";
 import pg from "pg";
 import {
   users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes, artistFollows,
@@ -27,6 +27,11 @@ export interface IStorage {
   createSong(song: InsertSong): Promise<Song>;
   incrementSongStat(songId: string, field: "likes" | "comments" | "saves" | "shares"): Promise<void>;
   decrementSongStat(songId: string, field: "likes" | "saves"): Promise<void>;
+  updateSongStatus(songId: string, status: "approved" | "rejected", rejectionReason?: string): Promise<Song | undefined>;
+  updateSongMetadata(songId: string, data: Partial<Pick<Song, "title" | "artist" | "mood" | "features" | "lyrics" | "aiTags">>): Promise<Song | undefined>;
+  getPendingSongs(): Promise<Song[]>;
+  getSongStats(songId: string): Promise<{ plays: number; likes: number; skips: number; completions: number; engagementScore: number }>;
+  getArtistSongsAll(userId: string): Promise<Song[]>;
 
   // Likes
   likeSong(userId: string, songId: string): Promise<void>;
@@ -107,7 +112,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSongs(): Promise<Song[]> {
-    return db.select().from(songs).orderBy(desc(songs.createdAt));
+    return db.select().from(songs).where(eq(songs.status, "approved")).orderBy(desc(songs.createdAt));
   }
 
   async getSong(id: string): Promise<Song | undefined> {
@@ -117,19 +122,65 @@ export class DatabaseStorage implements IStorage {
 
   async getSongsByMood(mood: string): Promise<Song[]> {
     return db.select().from(songs).where(
-      sql`${songs.features}->>'mood' ILIKE ${'%' + mood + '%'}`
+      and(
+        eq(songs.status, "approved"),
+        sql`${songs.features}->>'mood' ILIKE ${'%' + mood + '%'}`
+      )
     ).orderBy(desc(songs.likes));
   }
 
   async searchSongs(query: string): Promise<Song[]> {
     return db.select().from(songs).where(
-      sql`${songs.title} ILIKE ${'%' + query + '%'} OR ${songs.artist} ILIKE ${'%' + query + '%'}`
+      and(
+        eq(songs.status, "approved"),
+        sql`${songs.title} ILIKE ${'%' + query + '%'} OR ${songs.artist} ILIKE ${'%' + query + '%'}`
+      )
     );
   }
 
   async createSong(song: InsertSong): Promise<Song> {
     const [newSong] = await db.insert(songs).values(song).returning();
     return newSong;
+  }
+
+  async updateSongStatus(songId: string, status: "approved" | "rejected", rejectionReason?: string): Promise<Song | undefined> {
+    const updateData: Partial<Song> = { status };
+    if (rejectionReason !== undefined) updateData.rejectionReason = rejectionReason;
+    if (status === "approved") {
+      updateData.distributionScore = 10;
+      updateData.distributionPhase = "test";
+    }
+    const [updated] = await db.update(songs).set(updateData).where(eq(songs.id, songId)).returning();
+    return updated;
+  }
+
+  async updateSongMetadata(songId: string, data: Partial<Pick<Song, "title" | "artist" | "mood" | "features" | "lyrics" | "aiTags">>): Promise<Song | undefined> {
+    const [updated] = await db.update(songs).set(data).where(eq(songs.id, songId)).returning();
+    return updated;
+  }
+
+  async getPendingSongs(): Promise<Song[]> {
+    return db.select().from(songs).where(eq(songs.status, "pending")).orderBy(desc(songs.createdAt));
+  }
+
+  async getSongStats(songId: string): Promise<{ plays: number; likes: number; skips: number; completions: number; engagementScore: number }> {
+    const logs = await this.getSongBehaviorLogs(songId);
+    const plays = logs.length;
+    const likes = logs.filter(l => l.liked).length;
+    const skips = logs.filter(l => l.skipped).length;
+    const completions = plays - skips;
+    const replays = logs.reduce((s, l) => s + l.replays, 0);
+    const engagementScore = plays === 0 ? 0 :
+      Math.min(100, Math.round(
+        (completions / plays * 40) +
+        (likes / plays * 35) +
+        (Math.min(replays / plays, 1) * 25)
+      ));
+    return { plays, likes, skips, completions, engagementScore };
+  }
+
+  async getArtistSongsAll(userId: string): Promise<Song[]> {
+    return db.select().from(songs).where(eq(songs.uploadedBy, userId)).orderBy(desc(songs.createdAt));
   }
 
   async incrementSongStat(songId: string, field: "likes" | "comments" | "saves" | "shares"): Promise<void> {
@@ -359,6 +410,7 @@ export class DatabaseStorage implements IStorage {
   /** Viral songs: highest recent 24h engagement score. */
   async getTrendingViral(limit = 10): Promise<Song[]> {
     return db.select().from(songs)
+      .where(eq(songs.status, "approved"))
       .orderBy(sql`
         COALESCE((${songs.features}->'popularity'->'recent24h'->>'plays')::int, 0) +
         COALESCE((${songs.features}->'popularity'->'recent24h'->>'likes')::int, 0) * 2 +
@@ -371,6 +423,7 @@ export class DatabaseStorage implements IStorage {
   /** Fastest growing: highest ratio of recent24h plays to total plays. */
   async getTrendingFastest(limit = 10): Promise<Song[]> {
     return db.select().from(songs)
+      .where(eq(songs.status, "approved"))
       .orderBy(sql`
         COALESCE((${songs.features}->'popularity'->'recent24h'->>'plays')::float, 0) /
         GREATEST(COALESCE((${songs.features}->'popularity'->>'plays')::float, 1), 1) DESC
@@ -392,6 +445,7 @@ export class DatabaseStorage implements IStorage {
         ) AS top_lyric_line
       FROM songs s
       LEFT JOIN moments m ON m.song_id = s.id
+      WHERE s.status = 'approved'
       GROUP BY s.id
       HAVING COUNT(m.id) > 0
       ORDER BY COUNT(m.id) DESC, COALESCE(SUM(m.likes + m.comments), 0) DESC
@@ -414,6 +468,9 @@ export class DatabaseStorage implements IStorage {
       createdAt: r.created_at as Date,
       distributionScore: r.distribution_score as number,
       distributionPhase: r.distribution_phase as string,
+      status: (r.status as string) ?? "approved",
+      aiTags: (r.ai_tags as string[]) ?? [],
+      rejectionReason: r.rejection_reason as string | null,
       momentCount: r.moment_count as number,
       topLyricLine: r.top_lyric_line as string,
     }));

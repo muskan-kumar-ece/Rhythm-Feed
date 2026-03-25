@@ -1,6 +1,6 @@
-# VibeScroll
+# Rytham
 
-A mobile-style vertical music discovery web app (Resso/TikTok-inspired) with an AI-driven infinite vertical feed, mood-based discovery, animated lyrics, social actions, and a full-stack backend.
+A mobile-style vertical music discovery web app (Resso/TikTok-inspired) with an AI-driven infinite vertical feed, mood-based discovery, animated lyrics, social actions, Music Moments, an AI DJ, a full creator portal with track upload + moderation pipeline, and a full-stack backend.
 
 ## Architecture
 

@@ -32,6 +32,10 @@ export type ApiSong = {
   // Distribution system
   distributionScore?: number;
   distributionPhase?: string;
+  // Moderation
+  status?: "pending" | "approved" | "rejected";
+  aiTags?: string[];
+  rejectionReason?: string | null;
   // Ranking metadata injected by the server (Stages 1–3)
   _score?: number;
   _scoreBreakdown?: {
@@ -101,6 +105,25 @@ export type ApiAdminRetention = {
   day7Retained: number;
 };
 
+export type ApiSongStats = {
+  plays: number;
+  likes: number;
+  skips: number;
+  completions: number;
+  engagementScore: number;
+};
+
+export type ApiUploadResult = {
+  song: ApiSong;
+  analysis: {
+    tempo: string;
+    energy: string;
+    moodCategories: string[];
+    aiTags: string[];
+    estimatedBpm: number;
+  };
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -109,6 +132,16 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(err.message || "Request failed");
+  }
+  return res.json();
+}
+
+// Upload (multipart — no Content-Type header, browser sets boundary automatically)
+async function upload<T>(url: string, formData: FormData): Promise<T> {
+  const res = await fetch(url, { method: "POST", body: formData });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || "Upload failed");
   }
   return res.json();
 }
@@ -125,6 +158,9 @@ export const api = {
   getSongsByMood: (mood: string) => request<ApiSong[]>(`/api/songs/mood/${encodeURIComponent(mood)}`),
   searchSongs: (query: string) => request<ApiSong[]>(`/api/songs/search?q=${encodeURIComponent(query)}`),
   createSong: (data: Partial<ApiSong>) => request<ApiSong>("/api/songs", { method: "POST", body: JSON.stringify(data) }),
+
+  // Upload (real file upload)
+  uploadTrack: (formData: FormData) => upload<ApiUploadResult>("/api/upload", formData),
 
   // Like
   isLiked: (songId: string) => request<{ liked: boolean }>(`/api/songs/${songId}/liked`),
@@ -160,6 +196,14 @@ export const api = {
 
   // Artist
   getArtistSongs: () => request<ApiSong[]>("/api/artist/songs"),
+  getSongStats: (songId: string) => request<ApiSongStats>(`/api/artist/songs/${songId}/stats`),
+  updateSongMetadata: (songId: string, data: {
+    title?: string; artist?: string; mood?: string; genre?: string;
+    tempo?: string; energy?: string; lyricsText?: string;
+  }) => request<ApiSong>(`/api/artist/songs/${songId}/metadata`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  }),
 
   // AI DJ Session
   getAIDJSession: (prefs?: { moods: string[]; genres: string[] } | null) => {
@@ -211,6 +255,14 @@ export const api = {
   getAdminStats: () => request<ApiAdminStats>("/api/admin/stats"),
   getAdminDailyActivity: () => request<ApiAdminDailyActivity[]>("/api/admin/daily-activity"),
   getAdminRetention: () => request<ApiAdminRetention>("/api/admin/retention"),
+
+  // Admin moderation
+  getPendingSongs: () => request<ApiSong[]>("/api/admin/pending"),
+  approveSong: (songId: string) => request<{ success: boolean; song: ApiSong }>(`/api/admin/songs/${songId}/approve`, { method: "POST" }),
+  rejectSong: (songId: string, reason: string) => request<{ success: boolean; song: ApiSong }>(`/api/admin/songs/${songId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  }),
 
   // Artist follows
   isFollowingArtist: (artistName: string) =>
