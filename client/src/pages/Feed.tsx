@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import SongCard from "@/components/Feed/SongCard";
+import AIDJIntro from "@/components/Feed/AIDJIntro";
 import { ApiSong, api } from "@/lib/api";
 import { generateFeedSegment, generateMoodFeedSegment, setSongsPool } from "@/lib/recommendation";
 import { getSessionContext, getSessionTopMood } from "@/lib/session";
@@ -9,17 +10,24 @@ import { cn } from "@/lib/utils";
 
 const MOODS = ["For You", "Focus", "Night Drive", "Gym", "Study", "Chill", "Sad", "Hype"];
 
+// Show the AI DJ intro once per browser session (not every tab switch)
+const DJ_INTRO_KEY = "vibescroll_dj_intro_shown";
+
 export default function Feed() {
   const [activeIndex, setActiveIndex]     = useState(0);
   const containerRef                      = useRef<HTMLDivElement>(null);
   const [selectedMood, setSelectedMood]   = useState("For You");
   const [feedItems, setFeedItems]         = useState<ApiSong[]>([]);
   const [showGreeting, setShowGreeting]   = useState(true);
+  const [djGreeting, setDjGreeting]       = useState<string | null>(null);
+  const [djTheme, setDjTheme]             = useState<string | null>(null);
+
+  // Show AI DJ intro on first session visit; skip on subsequent navigations back to feed
+  const [showDJIntro, setShowDJIntro] = useState(
+    () => !sessionStorage.getItem(DJ_INTRO_KEY)
+  );
 
   // ── Session awareness ────────────────────────────────────────────────────────
-  // sessionVersion increments every 3 songs — this triggers a re-fetch of the
-  // ranked feed with the latest SessionContext so the server can re-rank in
-  // real-time based on what the user has actually been listening to.
   const [sessionVersion, setSessionVersion] = useState(0);
   const sessionCountRef                     = useRef(0);
   const queryClient                         = useQueryClient();
@@ -27,25 +35,28 @@ export default function Feed() {
   const handleSessionEvent = useCallback(() => {
     sessionCountRef.current += 1;
     if (sessionCountRef.current % 3 === 0) {
-      // Invalidate the ranked songs cache so the next fetch includes fresh context
       queryClient.invalidateQueries({ queryKey: ["ranked-songs"] });
       setSessionVersion(v => v + 1);
     }
   }, [queryClient]);
 
   // ── Ranked songs query ───────────────────────────────────────────────────────
-  // Include sessionVersion in the key so new versions trigger a refetch.
-  // The queryFn reads the *current* session context at call time.
   const { data: allSongs, isLoading } = useQuery({
     queryKey: ["ranked-songs", sessionVersion],
     queryFn: () => api.getRankedSongs(getSessionContext()),
-    staleTime: 2 * 60 * 1000, // re-rank at most every 2 minutes (or on session version bump)
+    staleTime: 2 * 60 * 1000,
   });
 
-  // Seed the recommendation engine once songs are loaded
+  // Seed the recommendation engine once songs are loaded.
+  // If the DJ intro is still showing (or just dismissed via onDJReady),
+  // we do NOT overwrite feedItems here — the DJ playlist takes precedence.
   useEffect(() => {
-    if (allSongs && allSongs.length > 0) {
-      setSongsPool(allSongs);
+    if (!allSongs || allSongs.length === 0) return;
+    setSongsPool(allSongs);
+
+    // Only set feedItems from the ranked pool when the DJ intro has already been
+    // dismissed (i.e., the user has seen the intro and the playlist has been set).
+    if (!showDJIntro && feedItems.length === 0) {
       if (selectedMood === "For You") {
         setFeedItems(generateFeedSegment() as ApiSong[]);
       } else {
@@ -58,38 +69,51 @@ export default function Feed() {
   useEffect(() => {
     if (!allSongs || allSongs.length === 0) return;
     setActiveIndex(0);
-    if (containerRef.current) {
-      containerRef.current.scrollTop = 0;
-    }
-    
+    if (containerRef.current) containerRef.current.scrollTop = 0;
+
     if (selectedMood === "For You") {
       setFeedItems(generateFeedSegment() as ApiSong[]);
     } else {
       setFeedItems(generateMoodFeedSegment(selectedMood) as ApiSong[]);
     }
-    
+
     if (selectedMood === "For You" && feedItems.length === 0) {
       const timer = setTimeout(() => setShowGreeting(false), 3500);
       return () => clearTimeout(timer);
     }
-  }, [selectedMood, allSongs]);
+  }, [selectedMood]);
+
+  // ── AI DJ Intro handler ─────────────────────────────────────────────────────
+  const handleDJReady = useCallback((playlist: ApiSong[], greeting: string, theme: string) => {
+    sessionStorage.setItem(DJ_INTRO_KEY, "1");
+    setDjGreeting(greeting);
+    setDjTheme(theme);
+    setShowDJIntro(false);
+
+    // Use the DJ-curated playlist as the first page of the feed
+    if (allSongs && allSongs.length > 0) {
+      setSongsPool(allSongs);
+    }
+    const djFeed = [...playlist];
+    // Append more songs so infinite scroll still works
+    const rest = generateFeedSegment() as ApiSong[];
+    setFeedItems([...djFeed, ...rest]);
+
+    // Show the greeting banner briefly
+    setShowGreeting(true);
+    setTimeout(() => setShowGreeting(false), 4000);
+  }, [allSongs]);
 
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
-    
     const container = containerRef.current;
-    const scrollPosition = container.scrollTop;
-    const windowHeight = window.innerHeight;
-    
-    // Using snap points, the index is roughly scrollPosition / windowHeight
-    const index = Math.round(scrollPosition / windowHeight);
-    
+    const index = Math.round(container.scrollTop / window.innerHeight);
+
     if (index !== activeIndex && index >= 0 && index < feedItems.length) {
       setActiveIndex(index);
-      if (showGreeting) setShowGreeting(false); // hide greeting on scroll
+      if (showGreeting) setShowGreeting(false);
     }
-    
-    // Infinite loading: append more curated items when reaching the end
+
     if (index >= feedItems.length - 2) {
       if (selectedMood === "For You") {
         setFeedItems(prev => [...prev, ...generateFeedSegment()]);
@@ -98,6 +122,30 @@ export default function Feed() {
       }
     }
   }, [activeIndex, feedItems.length, selectedMood, showGreeting]);
+
+  // ── Greeting text ────────────────────────────────────────────────────────────
+  const hour = new Date().getHours();
+  let timeOfDay = "Night";
+  if (hour >= 5 && hour < 12) timeOfDay = "Morning";
+  else if (hour >= 12 && hour < 17) timeOfDay = "Afternoon";
+  else if (hour >= 17 && hour < 21) timeOfDay = "Evening";
+
+  const sessionTopMood  = getSessionTopMood();
+  const sessionCtxNow   = getSessionContext();
+  const greetingMessage = djGreeting
+    ? djGreeting
+    : sessionTopMood
+      ? `Your ${sessionTopMood} session is curated. Feed adapting in real-time.`
+      : `Good ${timeOfDay}! Here are songs perfect for your current vibe.`;
+
+  const djLabel = djTheme
+    ? djTheme
+    : sessionTopMood ? "Session DJ — Live" : "AI Personal DJ";
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+  if (showDJIntro) {
+    return <AIDJIntro onReady={handleDJReady} />;
+  }
 
   if (isLoading || feedItems.length === 0) {
     return (
@@ -108,33 +156,21 @@ export default function Feed() {
     );
   }
 
-  // Get time of day for dynamic greeting
-  const hour = new Date().getHours();
-  let timeOfDay = "Night";
-  if (hour >= 5 && hour < 12) timeOfDay = "Morning";
-  else if (hour >= 12 && hour < 17) timeOfDay = "Afternoon";
-  else if (hour >= 17 && hour < 21) timeOfDay = "Evening";
-
-  // Session-aware greeting
-  const sessionTopMood   = getSessionTopMood();
-  const sessionCtxNow    = getSessionContext();
-  const greetingMessage  = sessionTopMood
-    ? `Your ${sessionTopMood} session is curated. Feed adapting in real-time.`
-    : `Good ${timeOfDay}! Here are songs perfect for your current vibe.`;
-
   return (
     <div className="relative h-[100dvh] w-full bg-black">
-      
+
       {/* Top Mood Navigation */}
       <div className="absolute top-0 left-0 right-0 z-50 pt-12 pb-4 px-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
         <div className="flex items-center gap-6 text-lg font-display font-semibold justify-center pointer-events-auto overflow-x-auto no-scrollbar mask-image-fade-x pb-2">
           {MOODS.map(mood => (
-            <button 
+            <button
               key={mood}
               onClick={() => setSelectedMood(mood)}
               className={cn(
                 "whitespace-nowrap transition-all duration-300 relative",
-                selectedMood === mood ? "text-white scale-110 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" : "text-white/40 hover:text-white/70"
+                selectedMood === mood
+                  ? "text-white scale-110 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
+                  : "text-white/40 hover:text-white/70"
               )}
             >
               {mood}
@@ -158,7 +194,7 @@ export default function Feed() {
           </div>
           <div>
             <p className="text-primary text-xs font-bold uppercase tracking-wider mb-0.5">
-              {sessionTopMood ? "Session DJ — Live" : "AI Personal DJ"}
+              {djLabel}
             </p>
             <p className="text-white text-sm font-medium leading-tight">
               {greetingMessage}
@@ -167,7 +203,7 @@ export default function Feed() {
         </div>
       </div>
 
-      {/* Now Vibing indicator — appears after 3+ songs in session */}
+      {/* Now Vibing indicator */}
       {sessionCtxNow && sessionCtxNow.sessionMoods.length > 0 && (
         <div className="absolute top-28 right-4 z-50 pointer-events-none">
           <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md border border-primary/30 rounded-full px-3 py-1.5">
@@ -182,24 +218,21 @@ export default function Feed() {
         </div>
       )}
 
-      <div 
+      <div
         ref={containerRef}
         onScroll={handleScroll}
         className="h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar"
       >
         {feedItems.map((song, index) => {
-          // Performance optimization: only fully render components near the active index
           const isNear = Math.abs(index - activeIndex) <= 2;
-          
           if (!isNear) {
             return <div key={song.id} className="h-[100dvh] w-full snap-start snap-always bg-black" />;
           }
-          
           return (
-            <SongCard 
-              key={song.id} 
-              song={song} 
-              isActive={index === activeIndex} 
+            <SongCard
+              key={song.id}
+              song={song}
+              isActive={index === activeIndex}
               shouldPreload={index === activeIndex + 1}
               onSessionEvent={handleSessionEvent}
             />

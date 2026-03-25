@@ -154,6 +154,64 @@ All routes under `/api`:
 | GET | `/api/user/profile` | Demo user profile |
 | GET | `/api/artist/songs` | Songs uploaded by demo user |
 
+## AI Personal DJ System
+
+### Server (`GET /api/ai-dj/session`)
+- Analyzes the user's last 30 behavior logs to determine dominant mood (weighted: liked songs count 2×)
+- Classifies time of day (morning/afternoon/evening/latenight)
+- Applies a greeting template matrix (time × mood) for 16+ distinct personalized greetings
+- Returns `{ greeting, theme, timeOfDay, dominantMood, topMoods, hasHistory, playlist[8] }`
+- The `playlist` is the server-ranked feed filtered to prefer songs matching the primary mood
+
+### Client (`AIDJIntro.tsx`)
+- Full-screen splash that runs on the FIRST visit per browser session (`sessionStorage`)
+- Phases: loading → analyzing (stepped progress bar with copy) → reveal → starting
+- Reveal shows the personalized greeting, mood tags, a 5-cover playlist strip, and a "Start Session" CTA
+- Auto-advances to the feed after 3 seconds; user can also tap "Start Session" immediately
+- On dismiss: `Feed.tsx` sets the DJ playlist as the first page of `feedItems` and shows the greeting in the banner
+
+## Enhanced Music Moments
+
+### New API routes
+- `GET /api/moments/trending` — moments sorted by engagement score (likes×2 + comments), limit 20
+- `GET /api/moments/discover-songs` — unique songs sourced from top-engaged moments via `selectDistinctOn`
+- `POST /api/moments` now fully wired with lyric picker, mood selection, and caption; invalidates cache on success
+
+### Moments page
+- **Two tabs**: "For You" (engagement-sorted) and "Trending" (ranked + flame badges)
+- **Discover Songs strip**: horizontal scroll of songs surfaced from moments, labeled "via moments"
+- Trending moments show rank (#1, #2…), engagement score, and orange border treatment
+- `MomentCard` and `DiscoverSongPill` are self-contained sub-components within the file
+
+### Create Moment from Feed
+- The existing "Moment" button on `SongCard` now opens a fully functional modal:
+  - Lyric picker (← → arrows through all synced lyrics)
+  - Mood selector (pill buttons)
+  - Caption textarea
+  - Posts via `api.createMoment()` and invalidates both `moments` and `moments-trending` query keys
+  - Shows a success confirmation state ("Moment Posted!") before returning to the feed
+
+## Artist Analytics Dashboard
+
+All charts and stats in `ArtistPortal.tsx` now use real data from the following API endpoints:
+
+| Route | Data |
+|---|---|
+| `GET /api/analytics/mood-breakdown` | Plays, completions, likes, skips grouped by mood |
+| `GET /api/analytics/hourly` | Play count by hour of day (0–23) extracted from `behavior_logs.created_at` |
+| `GET /api/analytics/growth` | Plays per day for the last 30 days |
+| `GET /api/analytics/retention/:songId` | Listen drop-off in 10-second buckets from `FLOOR(duration_seconds/10)` |
+
+### New dashboard sections
+1. **Audience Retention** — bar chart showing real skip-point distribution per 10s bucket; falls back to a smooth estimated curve when no data exists
+2. **Engagement by Mood** — horizontal bars for each mood showing plays + completion rate
+3. **Time of Day** — 24-bar hourly heatmap; peak hour highlighted in yellow
+4. **Listener Growth** — 30-day bar chart of play volume over time
+5. **Actionable Insights** — automatically generated cards:
+   - ⚠ Warning if completion rate < 50%
+   - ✅ Win if completion or like rate is above threshold
+   - 💡 Tips based on peak hour, top-performing mood
+
 ## Navigation
 
 5 tabs: Feed (`/`), Discover (`/search`), Moments (`/moments`), Studio (`/artist/dashboard`), Profile (`/profile`)

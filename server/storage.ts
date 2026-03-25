@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, desc, and, ilike, sql } from "drizzle-orm";
+import { eq, desc, and, ilike, sql, gte } from "drizzle-orm";
 import pg from "pg";
 import {
   users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes,
@@ -57,6 +57,16 @@ export interface IStorage {
 
   // Discovery boost
   updateSongDistribution(songId: string, score: number, phase: DistributionPhase): Promise<void>;
+
+  // Analytics
+  getAnalyticsRetention(songId: string): Promise<{ bucket: number; count: number }[]>;
+  getAnalyticsMoodBreakdown(): Promise<{ mood: string; plays: number; completions: number; likes: number; skips: number }[]>;
+  getAnalyticsHourly(): Promise<{ hour: number; plays: number }[]>;
+  getAnalyticsGrowth(): Promise<{ date: string; plays: number }[]>;
+
+  // Moments — extended
+  getTrendingMoments(): Promise<(Moment & { user: User; song: Song })[]>;
+  getSongsFromMoments(): Promise<Song[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -219,6 +229,92 @@ export class DatabaseStorage implements IStorage {
     await db.update(songs)
       .set({ distributionScore: score, distributionPhase: phase })
       .where(eq(songs.id, songId));
+  }
+
+  // ── Analytics ──────────────────────────────────────────────────────────────
+
+  /** Retention: how far users listen before dropping off, in 10-second buckets. */
+  async getAnalyticsRetention(songId: string): Promise<{ bucket: number; count: number }[]> {
+    const rows = await db
+      .select({
+        bucket: sql<number>`FLOOR(${behaviorLogs.durationSeconds}::float / 10)::integer`,
+        count:  sql<number>`COUNT(*)::integer`,
+      })
+      .from(behaviorLogs)
+      .where(eq(behaviorLogs.songId, songId))
+      .groupBy(sql`FLOOR(${behaviorLogs.durationSeconds}::float / 10)::integer`)
+      .orderBy(sql`FLOOR(${behaviorLogs.durationSeconds}::float / 10)::integer`);
+    return rows;
+  }
+
+  /** Mood breakdown: aggregate engagement stats per mood across all songs. */
+  async getAnalyticsMoodBreakdown(): Promise<{ mood: string; plays: number; completions: number; likes: number; skips: number }[]> {
+    const rows = await db
+      .select({
+        mood:        songs.mood,
+        plays:       sql<number>`COUNT(${behaviorLogs.id})::integer`,
+        completions: sql<number>`SUM(CASE WHEN ${behaviorLogs.skipped} = false THEN 1 ELSE 0 END)::integer`,
+        likes:       sql<number>`SUM(CASE WHEN ${behaviorLogs.liked} = true THEN 1 ELSE 0 END)::integer`,
+        skips:       sql<number>`SUM(CASE WHEN ${behaviorLogs.skipped} = true THEN 1 ELSE 0 END)::integer`,
+      })
+      .from(behaviorLogs)
+      .innerJoin(songs, eq(behaviorLogs.songId, songs.id))
+      .groupBy(songs.mood)
+      .orderBy(sql`COUNT(${behaviorLogs.id}) DESC`);
+    return rows;
+  }
+
+  /** Hourly: how many plays happen at each hour of the day (0–23). */
+  async getAnalyticsHourly(): Promise<{ hour: number; plays: number }[]> {
+    const rows = await db
+      .select({
+        hour:  sql<number>`EXTRACT(HOUR FROM ${behaviorLogs.createdAt})::integer`,
+        plays: sql<number>`COUNT(*)::integer`,
+      })
+      .from(behaviorLogs)
+      .groupBy(sql`EXTRACT(HOUR FROM ${behaviorLogs.createdAt})`)
+      .orderBy(sql`EXTRACT(HOUR FROM ${behaviorLogs.createdAt})`);
+    return rows;
+  }
+
+  /** Growth: plays per day for the last 30 days. */
+  async getAnalyticsGrowth(): Promise<{ date: string; plays: number }[]> {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const rows = await db
+      .select({
+        date:  sql<string>`DATE(${behaviorLogs.createdAt})::text`,
+        plays: sql<number>`COUNT(*)::integer`,
+      })
+      .from(behaviorLogs)
+      .where(gte(behaviorLogs.createdAt, cutoff))
+      .groupBy(sql`DATE(${behaviorLogs.createdAt})`)
+      .orderBy(sql`DATE(${behaviorLogs.createdAt})`);
+    return rows;
+  }
+
+  // ── Moments — extended ────────────────────────────────────────────────────
+
+  /** Trending moments: ranked by engagement score (likes*2 + comments). */
+  async getTrendingMoments(): Promise<(Moment & { user: User; song: Song })[]> {
+    const rows = await db
+      .select({ moment: moments, user: users, song: songs })
+      .from(moments)
+      .innerJoin(users, eq(moments.userId, users.id))
+      .innerJoin(songs, eq(moments.songId, songs.id))
+      .orderBy(sql`${moments.likes} * 2 + ${moments.comments} DESC`)
+      .limit(20);
+    return rows.map(r => ({ ...r.moment, user: r.user, song: r.song }));
+  }
+
+  /** Songs discovered via moments: unique songs from top-engaged moments. */
+  async getSongsFromMoments(): Promise<Song[]> {
+    const rows = await db
+      .selectDistinctOn([moments.songId], { song: songs })
+      .from(moments)
+      .innerJoin(songs, eq(moments.songId, songs.id))
+      .orderBy(moments.songId, sql`${moments.likes} * 2 + ${moments.comments} DESC`)
+      .limit(10);
+    return rows.map(r => r.song);
   }
 }
 

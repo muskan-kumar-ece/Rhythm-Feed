@@ -193,6 +193,134 @@ export async function registerRoutes(
     res.json(artistSongs);
   });
 
+  // ── AI DJ Session ─────────────────────────────────────────────────────────
+  // Analyzes recent behavior to craft a personalized greeting + curated playlist.
+  app.get("/api/ai-dj/session", async (_req: Request, res: Response) => {
+    const [allSongs, logs] = await Promise.all([
+      storage.getSongs(),
+      storage.getUserBehaviorLogs(DEMO_USER_ID),
+    ]);
+
+    const hour = new Date().getHours();
+    let timeOfDay: "morning" | "afternoon" | "evening" | "latenight";
+    if (hour >= 5 && hour < 12)       timeOfDay = "morning";
+    else if (hour >= 12 && hour < 17) timeOfDay = "afternoon";
+    else if (hour >= 17 && hour < 21) timeOfDay = "evening";
+    else                               timeOfDay = "latenight";
+
+    // Derive dominant mood from recent liked/completed sessions
+    const recentLogs = logs.slice(0, 30);
+    const moodWeight: Record<string, number> = {};
+    const songMap = new Map(allSongs.map(s => [s.id, s]));
+
+    for (const log of recentLogs) {
+      const song = songMap.get(log.songId);
+      if (!song || log.skipped) continue;
+      const weight = log.liked ? 2 : 1;
+      for (const m of song.features?.mood ?? []) {
+        moodWeight[m] = (moodWeight[m] || 0) + weight;
+      }
+    }
+
+    const topMoods = Object.entries(moodWeight)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([m]) => m);
+
+    const primaryMood = topMoods[0]?.toLowerCase() ?? "chill";
+    const hasHistory  = recentLogs.length >= 3;
+
+    // ── Greeting template matrix ────────────────────────────────────────────
+    type GreetingDef = { greeting: string; theme: string };
+    const templates: Record<string, Record<string, GreetingDef>> = {
+      morning: {
+        focus:      { greeting: "Rise and grind — your morning focus set",          theme: "Morning Focus" },
+        hype:       { greeting: "Good morning energy — wake up and go",              theme: "Morning Hype" },
+        study:      { greeting: "Early bird session — get in the zone",              theme: "Morning Study" },
+        default:    { greeting: "Good morning — here's a fresh start",              theme: "Morning Mix" },
+      },
+      afternoon: {
+        focus:      { greeting: "Afternoon deep work — stay locked in",             theme: "Afternoon Focus" },
+        chill:      { greeting: "Midday chill — take a breath",                     theme: "Afternoon Chill" },
+        study:      { greeting: "Study session loaded — no distractions",           theme: "Afternoon Study" },
+        gym:        { greeting: "Midday grind — power through",                     theme: "Afternoon Gym" },
+        default:    { greeting: "Here's your afternoon soundtrack",                 theme: "Afternoon Mix" },
+      },
+      evening: {
+        chill:      { greeting: "Unwind time — your evening vibe mix",              theme: "Evening Chill" },
+        "night drive": { greeting: "Golden hour to night drive — a cinematic journey", theme: "Night Drive" },
+        sad:        { greeting: "Feeling something tonight — let it out",           theme: "Evening Feels" },
+        hype:       { greeting: "Evening energy — let's go",                        theme: "Evening Hype" },
+        default:    { greeting: "Wind down your day the right way",                 theme: "Evening Session" },
+      },
+      latenight: {
+        chill:      { greeting: "Here's your late night chill mix",                 theme: "Late Night Chill" },
+        focus:      { greeting: "Late night focus — locked in while the world sleeps", theme: "Late Night Focus" },
+        sad:        { greeting: "For the quiet hours — a late night feels playlist", theme: "Late Night Feels" },
+        "night drive": { greeting: "It's late, the roads are yours",                theme: "Night Drive" },
+        default:    { greeting: "Late night VibeScroll — just you and the music",   theme: "Late Night" },
+      },
+    };
+
+    const timeGroup    = templates[timeOfDay];
+    const moodTemplate = timeGroup[primaryMood] ?? timeGroup["default"];
+    const noHistoryGreeting = { greeting: "Welcome to VibeScroll — here's what's hot right now", theme: "Trending Now" };
+    const { greeting, theme } = hasHistory ? moodTemplate : noHistoryGreeting;
+
+    // ── Curate 8 songs for the DJ playlist ─────────────────────────────────
+    const ranked = rankSongsForUser(allSongs, logs, null);
+    // Prefer songs matching the primary mood; fill from general ranking
+    const moodMatched = ranked.filter(s =>
+      s.features?.mood?.some(m => m.toLowerCase() === primaryMood)
+    );
+    const rest = ranked.filter(s =>
+      !s.features?.mood?.some(m => m.toLowerCase() === primaryMood)
+    );
+    const playlist = [...moodMatched, ...rest].slice(0, 8);
+
+    res.json({
+      greeting,
+      theme,
+      timeOfDay,
+      dominantMood: primaryMood,
+      hasHistory,
+      topMoods,
+      playlist,
+    });
+  });
+
+  // ── Moments — trending + discovery ───────────────────────────────────────
+  app.get("/api/moments/trending", async (_req: Request, res: Response) => {
+    const moments = await storage.getTrendingMoments();
+    res.json(moments);
+  });
+
+  app.get("/api/moments/discover-songs", async (_req: Request, res: Response) => {
+    const songs = await storage.getSongsFromMoments();
+    res.json(songs);
+  });
+
+  // ── Analytics ─────────────────────────────────────────────────────────────
+  app.get("/api/analytics/retention/:songId", async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsRetention(req.params.songId);
+    res.json(data);
+  });
+
+  app.get("/api/analytics/mood-breakdown", async (_req: Request, res: Response) => {
+    const data = await storage.getAnalyticsMoodBreakdown();
+    res.json(data);
+  });
+
+  app.get("/api/analytics/hourly", async (_req: Request, res: Response) => {
+    const data = await storage.getAnalyticsHourly();
+    res.json(data);
+  });
+
+  app.get("/api/analytics/growth", async (_req: Request, res: Response) => {
+    const data = await storage.getAnalyticsGrowth();
+    res.json(data);
+  });
+
   // ── Discovery / Distribution ──────────────────────────────────────────────
   // Status for a single song (used by artist studio)
   app.get("/api/songs/:id/distribution", async (req: Request, res: Response) => {

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react";
 import { ApiSong, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
 import { recordSessionPlay } from "@/lib/session";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface SongCardProps {
   song: ApiSong;
@@ -55,6 +56,13 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
   const [showShareModal, setShowShareModal] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [newComment, setNewComment] = useState("");
+  // Moment creation
+  const [momentCaption, setMomentCaption]     = useState("");
+  const [momentLyricIdx, setMomentLyricIdx]   = useState(0);
+  const [momentMood, setMomentMood]           = useState(song.mood);
+  const [isPostingMoment, setIsPostingMoment] = useState(false);
+  const [momentPosted, setMomentPosted]       = useState(false);
+  const queryClient = useQueryClient();
   
   // Like animation state
   const [showHeartAnimation, setShowHeartAnimation] = useState(false);
@@ -503,60 +511,143 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
         </div>
       </div>
 
-      {/* Share to Moment Modal Overlay */}
+      {/* Create Moment Modal */}
       {showShareModal && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-300 pb-16">
-          <div className="bg-background border-t border-white/10 rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-1/2 duration-300">
-            <h3 className="text-2xl font-display font-bold text-white mb-2">Create a Moment</h3>
-            <p className="text-sm text-white/50 mb-6">Share this song with the current lyric and mood.</p>
-            
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-medium bg-primary/20 text-primary px-2 py-1 rounded">{song.mood}</span>
+        <div
+          className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-300 pb-16"
+          onClick={(e) => { e.stopPropagation(); if (!isPostingMoment) { setShowShareModal(false); setIsPlaying(true); setMomentPosted(false); } }}
+        >
+          <div
+            className="bg-background border-t border-white/10 rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-1/2 duration-300 max-h-[80vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            {momentPosted ? (
+              /* ── Success state ──────────────────────────────── */
+              <div className="flex flex-col items-center gap-4 py-6 animate-in zoom-in-75 duration-300">
+                <CheckCircle2 size={48} className="text-primary" />
+                <h3 className="text-xl font-display font-bold text-white">Moment Posted!</h3>
+                <p className="text-sm text-white/50 text-center">Your moment is now live in the Moments feed.</p>
+                <button
+                  onClick={() => { setShowShareModal(false); setMomentPosted(false); setMomentCaption(""); setIsPlaying(true); }}
+                  className="w-full py-3 rounded-full bg-primary text-white font-semibold text-sm"
+                >
+                  Back to Feed
+                </button>
               </div>
-              <p className="font-display text-xl font-bold text-white text-center italic mb-4">
-                "{song.lyrics[currentLyricIndex]?.text || song.lyrics[0]?.text || ''}"
-              </p>
-              <div className="flex items-center gap-3 pt-4 border-t border-white/10">
-                 <div className="w-8 h-8 rounded bg-white/10 overflow-hidden">
-                    <img src={song.coverUrl} alt="cover" className="w-full h-full object-cover" />
-                 </div>
-                 <div>
-                   <p className="text-xs font-semibold text-white">{song.title}</p>
-                   <p className="text-[10px] text-white/50">{song.artist}</p>
-                 </div>
-              </div>
-            </div>
+            ) : (
+              /* ── Create form ────────────────────────────────── */
+              <>
+                <h3 className="text-2xl font-display font-bold text-white mb-1">Create a Moment</h3>
+                <p className="text-sm text-white/50 mb-5">Pick a lyric, add a caption, share with the world.</p>
 
-            <textarea 
-              placeholder="Add a caption..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary mb-6 resize-none h-24 text-white"
-            />
+                {/* Lyric picker */}
+                {song.lyrics.length > 0 && (
+                  <div className="mb-5">
+                    <p className="text-xs uppercase tracking-wider text-white/40 mb-2.5">Choose Lyric</p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setMomentLyricIdx(i => Math.max(0, i - 1))}
+                        disabled={momentLyricIdx === 0}
+                        className="p-2 rounded-full bg-white/5 hover:bg-white/10 disabled:opacity-30 transition"
+                      >
+                        <ChevronLeft size={16} className="text-white" />
+                      </button>
+                      <div className="flex-1 bg-white/5 border border-primary/30 rounded-xl p-4 text-center">
+                        <p className="font-display text-base font-bold text-white italic leading-snug">
+                          "{song.lyrics[momentLyricIdx]?.text}"
+                        </p>
+                        <p className="text-[10px] text-white/30 mt-2">
+                          {momentLyricIdx + 1} / {song.lyrics.length}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setMomentLyricIdx(i => Math.min(song.lyrics.length - 1, i + 1))}
+                        disabled={momentLyricIdx === song.lyrics.length - 1}
+                        className="p-2 rounded-full bg-white/5 hover:bg-white/10 disabled:opacity-30 transition"
+                      >
+                        <ChevronRightIcon size={16} className="text-white" />
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-            <div className="flex gap-4">
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowShareModal(false);
-                  setIsPlaying(true);
-                }}
-                className="flex-1 py-3 rounded-full border border-white/20 text-white font-medium text-sm hover:bg-white/5"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // In a real app, this would dispatch to the Moments feed
-                  setShowShareModal(false);
-                  setIsPlaying(true);
-                  // Optional: Show a toast notification here
-                }}
-                className="flex-1 py-3 rounded-full bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90"
-              >
-                Post Moment
-              </button>
-            </div>
+                {/* Mood picker */}
+                <div className="mb-5">
+                  <p className="text-xs uppercase tracking-wider text-white/40 mb-2.5">Mood</p>
+                  <div className="flex flex-wrap gap-2">
+                    {["Chill", "Hype", "Sad", "Focus", "Night Drive", "Gym", "Study"].map(m => (
+                      <button
+                        key={m}
+                        onClick={() => setMomentMood(m)}
+                        className={cn(
+                          "text-xs font-semibold px-3 py-1.5 rounded-full transition-colors",
+                          momentMood === m
+                            ? "bg-primary text-white"
+                            : "bg-white/5 text-white/60 hover:bg-white/10"
+                        )}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Caption */}
+                <textarea
+                  value={momentCaption}
+                  onChange={e => setMomentCaption(e.target.value)}
+                  placeholder="What does this lyric mean to you?"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary mb-5 resize-none h-20 text-white placeholder:text-white/30"
+                  data-testid="input-moment-caption"
+                />
+
+                {/* Song info strip */}
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5 mb-5">
+                  <img src={song.coverUrl} alt="cover" className="w-10 h-10 rounded-lg object-cover" />
+                  <div>
+                    <p className="text-xs font-semibold text-white">{song.title}</p>
+                    <p className="text-[10px] text-white/50">{song.artist}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setShowShareModal(false); setIsPlaying(true); }}
+                    className="flex-1 py-3 rounded-full border border-white/20 text-white font-medium text-sm hover:bg-white/5"
+                    data-testid="button-cancel-moment"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={isPostingMoment}
+                    data-testid="button-post-moment"
+                    onClick={async () => {
+                      const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+                      const lyricLine = song.lyrics[momentLyricIdx]?.text || song.title;
+                      setIsPostingMoment(true);
+                      try {
+                        await api.createMoment({
+                          songId: baseSongId,
+                          lyricLine,
+                          mood: momentMood,
+                          caption: momentCaption || `Vibing to "${song.title}"`,
+                        });
+                        queryClient.invalidateQueries({ queryKey: ["moments"] });
+                        queryClient.invalidateQueries({ queryKey: ["moments-trending"] });
+                        setMomentPosted(true);
+                      } catch {
+                        // swallow — moment likely failed but don't crash the feed
+                      } finally {
+                        setIsPostingMoment(false);
+                      }
+                    }}
+                    className="flex-1 py-3 rounded-full bg-primary text-white font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 transition-all"
+                  >
+                    {isPostingMoment ? "Posting…" : "Post Moment"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

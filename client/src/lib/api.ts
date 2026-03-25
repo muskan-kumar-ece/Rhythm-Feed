@@ -134,4 +134,29 @@ export const api = {
 
   // Artist
   getArtistSongs: () => request<ApiSong[]>("/api/artist/songs"),
+
+  // AI DJ Session
+  getAIDJSession: () => request<{
+    greeting: string;
+    theme: string;
+    timeOfDay: string;
+    dominantMood: string;
+    hasHistory: boolean;
+    topMoods: string[];
+    playlist: ApiSong[];
+  }>("/api/ai-dj/session"),
+
+  // Moments — extended
+  getTrendingMoments: () => request<ApiMoment[]>("/api/moments/trending"),
+  getSongsFromMoments: () => request<ApiSong[]>("/api/moments/discover-songs"),
+
+  // Analytics
+  getRetentionData: (songId: string) =>
+    request<{ bucket: number; count: number }[]>(`/api/analytics/retention/${songId}`),
+  getMoodBreakdown: () =>
+    request<{ mood: string; plays: number; completions: number; likes: number; skips: number }[]>("/api/analytics/mood-breakdown"),
+  getHourlyPerformance: () =>
+    request<{ hour: number; plays: number }[]>("/api/analytics/hourly"),
+  getListenerGrowth: () =>
+    request<{ date: string; plays: number }[]>("/api/analytics/growth"),
 };
