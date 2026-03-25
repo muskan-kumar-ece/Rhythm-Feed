@@ -147,6 +147,7 @@ export const api = {
     request<ApiMoment>("/api/moments", { method: "POST", body: JSON.stringify(data) }),
   likeMoment: (momentId: string) => request<{ success: boolean }>(`/api/moments/${momentId}/like`, { method: "POST" }),
   unlikeMoment: (momentId: string) => request<{ success: boolean }>(`/api/moments/${momentId}/like`, { method: "DELETE" }),
+  commentMoment: (momentId: string) => request<{ success: boolean }>(`/api/moments/${momentId}/comment`, { method: "POST" }),
   isMomentLiked: (momentId: string) => request<{ liked: boolean }>(`/api/moments/${momentId}/liked`),
 
   // User
@@ -210,4 +211,22 @@ export const api = {
   getAdminStats: () => request<ApiAdminStats>("/api/admin/stats"),
   getAdminDailyActivity: () => request<ApiAdminDailyActivity[]>("/api/admin/daily-activity"),
   getAdminRetention: () => request<ApiAdminRetention>("/api/admin/retention"),
+
+  // Artist follows
+  isFollowingArtist: (artistName: string) =>
+    request<{ following: boolean }>(`/api/artists/followed?artistName=${encodeURIComponent(artistName)}`),
+  followArtist: (artistName: string) =>
+    request<{ success: boolean; following: boolean }>("/api/artists/follow", {
+      method: "POST",
+      body: JSON.stringify({ artistName }),
+    }),
+  unfollowArtist: (artistName: string) =>
+    request<{ success: boolean; following: boolean }>("/api/artists/follow", {
+      method: "DELETE",
+      body: JSON.stringify({ artistName }),
+    }),
+  getFollowedArtists: () => request<string[]>("/api/artists/following"),
+
+  // User moments
+  getUserMoments: () => request<ApiMoment[]>("/api/user/moments"),
 };

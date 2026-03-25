@@ -4,11 +4,19 @@ import { Heart, MessageCircle, PlayCircle, MoreHorizontal, Plus, Quote, Trending
 import { ApiMoment, ApiSong, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+interface LocalComment {
+  id: number;
+  text: string;
+  timestamp: string;
+}
+
 export default function Moments() {
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [activeMoment, setActiveMoment]           = useState<ApiMoment | null>(null);
   const [newComment, setNewComment]               = useState("");
   const [activeSection, setActiveSection]         = useState<"forYou" | "trending">("forYou");
+  const [localComments, setLocalComments]         = useState<LocalComment[]>([]);
+  const [commentCounts, setCommentCounts]         = useState<Record<string, number>>({});
 
   const { data: moments, isLoading } = useQuery({
     queryKey: ["moments"],
@@ -38,7 +46,22 @@ export default function Moments() {
 
   const handleCommentClick = (moment: ApiMoment) => {
     setActiveMoment(moment);
+    setLocalComments([]);
+    setNewComment("");
     setShowCommentsModal(true);
+  };
+
+  const handleSubmitComment = () => {
+    const text = newComment.trim();
+    if (!text || !activeMoment) return;
+    const comment: LocalComment = { id: Date.now(), text, timestamp: "just now" };
+    setLocalComments(prev => [...prev, comment]);
+    setCommentCounts(prev => ({
+      ...prev,
+      [activeMoment.id]: (prev[activeMoment.id] ?? activeMoment.comments) + 1,
+    }));
+    setNewComment("");
+    api.commentMoment(activeMoment.id).catch(() => {});
   };
 
   return (
@@ -153,7 +176,7 @@ export default function Moments() {
           >
             <div className="p-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-10 rounded-t-3xl">
               <h3 className="font-display font-bold text-white">
-                Comments <span className="text-white/50 text-sm font-normal ml-1">{activeMoment.comments.toLocaleString()}</span>
+                Comments <span className="text-white/50 text-sm font-normal ml-1">{(commentCounts[activeMoment.id] ?? activeMoment.comments).toLocaleString()}</span>
               </h3>
               <button onClick={() => setShowCommentsModal(false)} className="p-2 rounded-full hover:bg-white/10 text-white/70">
                 <Plus className="rotate-45" size={20} />
@@ -161,6 +184,7 @@ export default function Moments() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+              {/* Seed comments */}
               <div className="flex gap-3">
                 <img src="https://i.pravatar.cc/150?u=u1" alt="User" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                 <div>
@@ -189,6 +213,23 @@ export default function Moments() {
                   </div>
                 </div>
               </div>
+              {/* Optimistically added comments */}
+              {localComments.map(c => (
+                <div key={c.id} className="flex gap-3 animate-in slide-in-from-bottom-2 duration-300">
+                  <img src="https://i.pravatar.cc/150?u=vibescroller" alt="You" className="w-8 h-8 rounded-full object-cover flex-shrink-0 ring-1 ring-primary/50" />
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-semibold text-white/90">vibescroller</span>
+                      <span className="text-xs text-white/40">{c.timestamp}</span>
+                    </div>
+                    <p className="text-sm text-white/90">{c.text}</p>
+                    <div className="flex items-center gap-4 mt-2">
+                      <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 0</button>
+                      <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="p-4 border-t border-white/10 bg-background sticky bottom-0">
@@ -197,14 +238,17 @@ export default function Moments() {
                   type="text"
                   value={newComment}
                   onChange={e => setNewComment(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleSubmitComment()}
                   placeholder="Add a comment..."
                   className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-primary text-white pr-10"
                   data-testid="input-comment"
+                  autoFocus
                 />
                 <button
+                  data-testid="button-submit-comment"
                   disabled={!newComment.trim()}
-                  onClick={() => setNewComment("")}
-                  className="absolute right-2 p-1.5 rounded-full bg-primary text-white disabled:opacity-30"
+                  onClick={handleSubmitComment}
+                  className="absolute right-2 p-1.5 rounded-full bg-primary text-white disabled:opacity-30 transition-opacity"
                 >
                   <Plus size={16} />
                 </button>

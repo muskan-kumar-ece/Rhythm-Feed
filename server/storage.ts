@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, desc, and, ilike, sql, gte } from "drizzle-orm";
 import pg from "pg";
 import {
-  users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes,
+  users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes, artistFollows,
   type User, type InsertUser,
   type Song, type InsertSong,
   type Moment, type InsertMoment,
@@ -46,6 +46,7 @@ export interface IStorage {
   likeMoment(userId: string, momentId: string): Promise<void>;
   unlikeMoment(userId: string, momentId: string): Promise<void>;
   isMomentLiked(userId: string, momentId: string): Promise<boolean>;
+  commentMoment(momentId: string): Promise<void>;
 
   // Behavior Logs
   logBehavior(log: InsertBehaviorLog): Promise<BehaviorLog>;
@@ -78,6 +79,15 @@ export interface IStorage {
   getAdminStats(): Promise<{ dau: number; totalPlays: number; skipRate: number; completionRate: number; avgDuration: number; songsPerSession: number }>;
   getAdminDailyActivity(days?: number): Promise<{ date: string; plays: number; skips: number; completions: number; likes: number }[]>;
   getAdminRetentionData(): Promise<{ totalUsers: number; day1Retained: number; day7Retained: number }>;
+
+  // Artist follows
+  followArtist(userId: string, artistName: string): Promise<void>;
+  unfollowArtist(userId: string, artistName: string): Promise<void>;
+  isFollowingArtist(userId: string, artistName: string): Promise<boolean>;
+  getFollowedArtists(userId: string): Promise<string[]>;
+
+  // User moments
+  getUserMoments(userId: string): Promise<(Moment & { user: User; song: Song })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -217,6 +227,10 @@ export class DatabaseStorage implements IStorage {
   async isMomentLiked(userId: string, momentId: string): Promise<boolean> {
     const [row] = await db.select().from(momentLikes).where(and(eq(momentLikes.userId, userId), eq(momentLikes.momentId, momentId)));
     return !!row;
+  }
+
+  async commentMoment(momentId: string): Promise<void> {
+    await db.update(moments).set({ comments: sql`${moments.comments} + 1` }).where(eq(moments.id, momentId));
   }
 
   async logBehavior(log: InsertBehaviorLog): Promise<BehaviorLog> {
@@ -474,6 +488,49 @@ export class DatabaseStorage implements IStorage {
       day1Retained:  (r?.day1_retained  as number) ?? 0,
       day7Retained:  (r?.day7_retained  as number) ?? 0,
     };
+  }
+
+  // ── Artist follows ────────────────────────────────────────────────────────
+
+  async followArtist(userId: string, artistName: string): Promise<void> {
+    const exists = await this.isFollowingArtist(userId, artistName);
+    if (!exists) {
+      await db.insert(artistFollows).values({ userId, artistName });
+    }
+  }
+
+  async unfollowArtist(userId: string, artistName: string): Promise<void> {
+    await db.delete(artistFollows).where(
+      and(eq(artistFollows.userId, userId), eq(artistFollows.artistName, artistName))
+    );
+  }
+
+  async isFollowingArtist(userId: string, artistName: string): Promise<boolean> {
+    const [row] = await db.select().from(artistFollows).where(
+      and(eq(artistFollows.userId, userId), eq(artistFollows.artistName, artistName))
+    );
+    return !!row;
+  }
+
+  async getFollowedArtists(userId: string): Promise<string[]> {
+    const rows = await db
+      .select({ artistName: artistFollows.artistName })
+      .from(artistFollows)
+      .where(eq(artistFollows.userId, userId));
+    return rows.map(r => r.artistName);
+  }
+
+  // ── User moments ──────────────────────────────────────────────────────────
+
+  async getUserMoments(userId: string): Promise<(Moment & { user: User; song: Song })[]> {
+    const rows = await db
+      .select({ moment: moments, user: users, song: songs })
+      .from(moments)
+      .innerJoin(users, eq(moments.userId, users.id))
+      .innerJoin(songs, eq(moments.songId, songs.id))
+      .where(eq(moments.userId, userId))
+      .orderBy(desc(moments.createdAt));
+    return rows.map(r => ({ ...r.moment, user: r.user, song: r.song }));
   }
 }
 

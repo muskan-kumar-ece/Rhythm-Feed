@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Upload, FileAudio, Image as ImageIcon, Tag, Activity, Users, Clock, PlayCircle, Plus, Music, Repeat, Heart, MessageCircle, TrendingUp, BarChart2, Sun, Lightbulb, AlertCircle, CheckCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,8 @@ const HOUR_LABELS = ["12a","1","2","3","4","5","6","7","8","9","10","11","12p","
 export default function ArtistDashboard() {
   const [activeTab, setActiveTab] = useState<"analytics" | "upload">("analytics");
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   // ── Upload form state ──────────────────────────────────────────────────────
   const [title, setTitle]           = useState("");
@@ -98,27 +101,36 @@ export default function ArtistDashboard() {
   }, [completionRate, likeRate, peakHour, moodData]);
 
   // ── Upload handler ─────────────────────────────────────────────────────────
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!title || !audioFile) return;
     setIsUploading(true);
-    setTimeout(() => {
+    try {
       const audioUrl = URL.createObjectURL(audioFile);
       const parsedLyrics = lyricsText.split("\n").filter(l => l.trim()).map((text, i) => ({ time: i * 3, text }));
-      api.createSong({
+      await api.createSong({
         title,
         artist,
         coverUrl: coverPreview || "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=500",
         audioUrl,
         mood,
-        features: { tempo, energy, genre: [genre], mood: [mood, "New Release"],
+        features: {
+          tempo, energy, genre: [genre], mood: [mood, "New Release"],
           popularity: { plays: 0, likes: 0, replays: 0, completions: 0, shares: 0,
-            recent24h: { plays: 0, likes: 0, replays: 0, comments: 0 } } },
+            recent24h: { plays: 0, likes: 0, replays: 0, comments: 0 } },
+        },
         lyrics: parsedLyrics.length > 0 ? parsedLyrics : [{ time: 0, text: "(Instrumental)" }],
-      } as any).catch(() => {});
+      } as any);
+      await queryClient.invalidateQueries({ queryKey: ["songs"] });
+      await queryClient.invalidateQueries({ queryKey: ["artist-songs"] });
+      toast({ title: "Track Uploaded!", description: `"${title}" is now live in the feed.` });
+      setTitle(""); setArtist("Local Artist"); setLyricsText("");
+      setCoverPreview(null); setAudioFile(null);
+      setActiveTab("analytics");
+    } catch (err) {
+      toast({ title: "Upload Failed", description: "Something went wrong. Please try again.", variant: "destructive" });
+    } finally {
       setIsUploading(false);
-      setTitle(""); setLyricsText(""); setCoverPreview(null); setAudioFile(null);
-      setLocation("/");
-    }, 1500);
+    }
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────

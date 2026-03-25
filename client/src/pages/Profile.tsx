@@ -1,20 +1,27 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2, X } from "lucide-react";
 import { Link } from "wouter";
 import { api, ApiSong } from "@/lib/api";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Profile() {
   const [activeTab, setActiveTab] = useState<'liked' | 'playlists' | 'saved' | 'moments' | 'history'>('liked');
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: userProfile } = useQuery({ queryKey: ["user-profile"], queryFn: () => api.getProfile() });
-  const { data: likedSongs = [] } = useQuery({ queryKey: ["liked-songs"], queryFn: () => api.getLikedSongs() });
-  const { data: savedSongs = [] } = useQuery({ queryKey: ["saved-songs"], queryFn: () => api.getSavedSongs() });
+  const { data: likedSongs = [], isLoading: likedLoading } = useQuery({ queryKey: ["liked-songs"], queryFn: () => api.getLikedSongs() });
+  const { data: savedSongs = [], isLoading: savedLoading } = useQuery({ queryKey: ["saved-songs"], queryFn: () => api.getSavedSongs() });
   const { data: historyLogs = [] } = useQuery({ queryKey: ["history"], queryFn: () => api.getHistory() });
   const { data: allSongs = [] } = useQuery({ queryKey: ["songs"], queryFn: () => api.getSongs() });
+  const { data: userMoments = [], isLoading: momentsLoading } = useQuery({
+    queryKey: ["user-moments"],
+    queryFn: () => api.getUserMoments(),
+  });
 
   const user = {
     name: userProfile?.displayName || "Vibe Scroller",
@@ -39,8 +46,6 @@ export default function Profile() {
     } : null;
   }).filter(Boolean) as (ApiSong & { playedAt: string })[];
 
-  // User moments would be moments authored by this user - we show a placeholder
-  const userMoments: any[] = [];
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -52,7 +57,11 @@ export default function Profile() {
               <BarChart2 size={18} className="text-primary" />
             </a>
           </Link>
-          <button className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
+          <button
+            data-testid="button-settings"
+            onClick={() => toast({ title: "Settings", description: "Settings panel coming soon." })}
+            className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+          >
              <Settings size={20} className="text-white" />
           </button>
         </div>
@@ -62,7 +71,11 @@ export default function Profile() {
             <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary/30 p-1">
               <img src={user.avatarUrl} alt={user.name} className="w-full h-full rounded-full object-cover" />
             </div>
-            <button className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center border-2 border-background opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+            <button
+              data-testid="button-edit-profile"
+              onClick={() => toast({ title: "Edit Profile", description: "Profile editing coming soon." })}
+              className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center border-2 border-background opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+            >
               <Edit2 size={14} className="text-primary-foreground" />
             </button>
           </div>
@@ -144,58 +157,92 @@ export default function Profile() {
       <div className="px-4 mt-6">
         {activeTab === 'liked' && (
           <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
-             {likedSongs.map((song) => (
-                <div key={song.id} className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer group border border-transparent hover:border-white/10">
-                  <div className="w-14 h-14 rounded-xl overflow-hidden relative">
-                    <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Play size={20} className="text-white fill-white ml-0.5" />
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-white text-base truncate">{song.title}</h3>
-                    <p className="text-sm text-white/50 truncate">{song.artist}</p>
-                  </div>
-                  <button className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors">
-                     <Heart size={18} className="fill-primary text-primary" />
-                  </button>
+            {likedLoading && [...Array(3)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/5 animate-pulse">
+                <div className="w-14 h-14 rounded-xl bg-white/10 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-white/10 rounded w-3/4" />
+                  <div className="h-3 bg-white/10 rounded w-1/2" />
                 </div>
-             ))}
+              </div>
+            ))}
+            {!likedLoading && likedSongs.length === 0 && (
+              <div className="text-center py-12 px-4">
+                <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4">
+                  <Heart size={24} className="text-white/30" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">No Likes Yet</h3>
+                <p className="text-sm text-white/50">Double-tap a song in the feed to like it.</p>
+              </div>
+            )}
+            {likedSongs.map((song) => (
+              <LikedSongRow
+                key={song.id}
+                song={song}
+                onUnlike={() => {
+                  api.unlikeSong(song.id)
+                    .then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["liked-songs"] });
+                      toast({ description: `Removed ${song.title} from likes` });
+                    })
+                    .catch(() => toast({ description: "Failed to unlike", variant: "destructive" }));
+                }}
+              />
+            ))}
           </div>
         )}
 
         {activeTab === 'saved' && (
           <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
-             {savedSongs.map((song) => (
-                <div key={song.id} className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer group border border-transparent hover:border-white/10">
-                  <div className="w-14 h-14 rounded-xl overflow-hidden relative">
-                    <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Play size={20} className="text-white fill-white ml-0.5" />
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-white text-base truncate">{song.title}</h3>
-                    <p className="text-sm text-white/50 truncate">{song.artist}</p>
-                  </div>
-                  <button className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors">
-                     <Bookmark size={18} className="fill-primary text-primary" />
-                  </button>
+            {savedLoading && [...Array(3)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/5 animate-pulse">
+                <div className="w-14 h-14 rounded-xl bg-white/10 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-white/10 rounded w-3/4" />
+                  <div className="h-3 bg-white/10 rounded w-1/2" />
                 </div>
-             ))}
+              </div>
+            ))}
+            {!savedLoading && savedSongs.length === 0 && (
+              <div className="text-center py-12 px-4">
+                <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4">
+                  <Bookmark size={24} className="text-white/30" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">No Saved Songs</h3>
+                <p className="text-sm text-white/50">Tap the bookmark on any song to save it for later.</p>
+              </div>
+            )}
+            {savedSongs.map((song) => (
+              <SavedSongRow
+                key={song.id}
+                song={song}
+                onUnsave={() => {
+                  api.unsaveSong(song.id)
+                    .then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["saved-songs"] });
+                      toast({ description: `Removed ${song.title} from saved` });
+                    })
+                    .catch(() => toast({ description: "Failed to unsave", variant: "destructive" }));
+                }}
+              />
+            ))}
           </div>
         )}
 
         {activeTab === 'playlists' && (
           <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
              {/* Create New Playlist Button */}
-             <div className="aspect-square rounded-3xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-white/5 hover:border-primary/50 transition-all group bg-white/[0.02]">
-                <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                   <div className="w-6 h-0.5 bg-white/60 absolute group-hover:bg-primary rounded-full" />
-                   <div className="h-6 w-0.5 bg-white/60 absolute group-hover:bg-primary rounded-full" />
+             <button
+               data-testid="button-new-playlist"
+               onClick={() => toast({ title: "New Playlist", description: "Playlist creation coming soon." })}
+               className="aspect-square rounded-3xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-white/5 hover:border-primary/50 transition-all group bg-white/[0.02]"
+             >
+                <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors relative">
+                   <div className="w-6 h-0.5 bg-white/60 group-hover:bg-primary rounded-full absolute" />
+                   <div className="h-6 w-0.5 bg-white/60 group-hover:bg-primary rounded-full absolute" />
                 </div>
                 <p className="font-semibold text-sm text-white/60 group-hover:text-primary transition-colors">New Playlist</p>
-             </div>
+             </button>
 
              {playlists.map((pl, i) => (
                 <div key={i} className="group cursor-pointer">
@@ -221,7 +268,20 @@ export default function Profile() {
 
         {activeTab === 'moments' && (
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {userMoments.length > 0 ? userMoments.map((moment) => (
+            {momentsLoading && [...Array(2)].map((_, i) => (
+              <div key={i} className="bg-white/5 border border-white/10 rounded-3xl p-5 animate-pulse">
+                <div className="flex gap-2 mb-4">
+                  <div className="h-5 w-16 bg-white/10 rounded-full" />
+                  <div className="h-5 w-20 bg-white/10 rounded-full ml-auto" />
+                </div>
+                <div className="space-y-2 py-4">
+                  <div className="h-6 bg-white/10 rounded w-4/5" />
+                  <div className="h-6 bg-white/10 rounded w-3/5" />
+                </div>
+                <div className="h-4 bg-white/10 rounded w-full mt-2" />
+              </div>
+            ))}
+            {!momentsLoading && userMoments.length > 0 ? userMoments.map((moment) => (
               <div key={moment.id} className="bg-white/5 border border-white/10 rounded-3xl p-5 relative overflow-hidden group">
                 {/* Background blur from cover */}
                 <div 
@@ -269,7 +329,17 @@ export default function Profile() {
           </div>
         )}
 
-        {activeTab === 'history' && (
+        {activeTab === 'history' && listeningHistory.length === 0 && (
+          <div className="text-center py-12 px-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4">
+              <History size={24} className="text-white/30" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No Listening History</h3>
+            <p className="text-sm text-white/50">Songs you listen to will appear here.</p>
+          </div>
+        )}
+
+        {activeTab === 'history' && listeningHistory.length > 0 && (
           <div className="space-y-0 animate-in fade-in slide-in-from-bottom-4 duration-500 relative before:absolute before:inset-0 before:ml-[27px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-white/10 before:to-transparent">
             {listeningHistory.map((song, i) => (
               <div key={`${song.id}-${i}`} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active py-3">
@@ -303,6 +373,76 @@ export default function Profile() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Helper Components ─────────────────────────────────────────────────────────
+
+function LikedSongRow({ song, onUnlike }: { song: ApiSong; onUnlike: () => void }) {
+  const [removing, setRemoving] = useState(false);
+  return (
+    <div
+      data-testid={`card-liked-song-${song.id}`}
+      className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer group border border-transparent hover:border-white/10"
+    >
+      <div className="w-14 h-14 rounded-xl overflow-hidden relative shrink-0">
+        <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <Play size={20} className="text-white fill-white ml-0.5" />
+        </div>
+      </div>
+      <div className="flex-1 min-w-0">
+        <h3 className="font-semibold text-white text-base truncate">{song.title}</h3>
+        <p className="text-sm text-white/50 truncate">{song.artist}</p>
+      </div>
+      <button
+        data-testid={`button-unlike-${song.id}`}
+        disabled={removing}
+        onClick={(e) => {
+          e.stopPropagation();
+          setRemoving(true);
+          onUnlike();
+        }}
+        className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-red-500/10 transition-colors group/unlike shrink-0"
+        title="Remove like"
+      >
+        <Heart size={18} className={cn("transition-colors", removing ? "text-white/30" : "fill-primary text-primary group-hover/unlike:fill-red-400 group-hover/unlike:text-red-400")} />
+      </button>
+    </div>
+  );
+}
+
+function SavedSongRow({ song, onUnsave }: { song: ApiSong; onUnsave: () => void }) {
+  const [removing, setRemoving] = useState(false);
+  return (
+    <div
+      data-testid={`card-saved-song-${song.id}`}
+      className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer group border border-transparent hover:border-white/10"
+    >
+      <div className="w-14 h-14 rounded-xl overflow-hidden relative shrink-0">
+        <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <Play size={20} className="text-white fill-white ml-0.5" />
+        </div>
+      </div>
+      <div className="flex-1 min-w-0">
+        <h3 className="font-semibold text-white text-base truncate">{song.title}</h3>
+        <p className="text-sm text-white/50 truncate">{song.artist}</p>
+      </div>
+      <button
+        data-testid={`button-unsave-${song.id}`}
+        disabled={removing}
+        onClick={(e) => {
+          e.stopPropagation();
+          setRemoving(true);
+          onUnsave();
+        }}
+        className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors group/unsave shrink-0"
+        title="Remove from saved"
+      >
+        <Bookmark size={18} className={cn("transition-colors", removing ? "text-white/30" : "fill-primary text-primary group-hover/unsave:fill-white/70 group-hover/unsave:text-white/70")} />
+      </button>
     </div>
   );
 }

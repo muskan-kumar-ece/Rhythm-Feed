@@ -152,6 +152,11 @@ export async function registerRoutes(
     res.json({ liked });
   });
 
+  app.post("/api/moments/:id/comment", async (req: Request, res: Response) => {
+    await storage.commentMoment(req.params.id);
+    res.json({ success: true });
+  });
+
   // ── Behavior Logging ─────────────────────────────────────────────────────
   app.post("/api/behavior", async (req: Request, res: Response) => {
     const result = insertBehaviorLogSchema.safeParse({ ...req.body, userId: DEMO_USER_ID });
@@ -480,6 +485,39 @@ export async function registerRoutes(
   app.get("/api/admin/retention", async (_req: Request, res: Response) => {
     const data = await storage.getAdminRetentionData();
     res.json(data);
+  });
+
+  // ── Artist follows ────────────────────────────────────────────────────────
+  app.get("/api/artists/followed", async (req: Request, res: Response) => {
+    const artistName = req.query.artistName as string;
+    if (!artistName) return res.status(400).json({ message: "artistName required" });
+    const following = await storage.isFollowingArtist(DEMO_USER_ID, artistName);
+    res.json({ following });
+  });
+
+  app.post("/api/artists/follow", async (req: Request, res: Response) => {
+    const { artistName } = req.body;
+    if (!artistName) return res.status(400).json({ message: "artistName required" });
+    await storage.followArtist(DEMO_USER_ID, artistName);
+    res.json({ success: true, following: true });
+  });
+
+  app.delete("/api/artists/follow", async (req: Request, res: Response) => {
+    const { artistName } = req.body;
+    if (!artistName) return res.status(400).json({ message: "artistName required" });
+    await storage.unfollowArtist(DEMO_USER_ID, artistName);
+    res.json({ success: true, following: false });
+  });
+
+  app.get("/api/artists/following", async (_req: Request, res: Response) => {
+    const artists = await storage.getFollowedArtists(DEMO_USER_ID);
+    res.json(artists);
+  });
+
+  // ── User moments ──────────────────────────────────────────────────────────
+  app.get("/api/user/moments", async (_req: Request, res: Response) => {
+    const userMoments = await storage.getUserMoments(DEMO_USER_ID);
+    res.json(userMoments);
   });
 
   return httpServer;

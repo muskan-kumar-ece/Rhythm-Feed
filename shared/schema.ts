@@ -92,6 +92,13 @@ export const momentLikes = pgTable("moment_likes", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const artistFollows = pgTable("artist_follows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  artistName: text("artist_name").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertSongSchema = createInsertSchema(songs).omit({ id: true, createdAt: true });
 export const insertMomentSchema = createInsertSchema(moments).omit({ id: true, createdAt: true });

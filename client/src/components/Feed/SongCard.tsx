@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X, UserCheck, UserPlus } from "lucide-react";
 import { ApiSong, ApiMoment, ApiUser, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
 import { recordSessionPlay } from "@/lib/session";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 interface SongCardProps {
   song: ApiSong;
@@ -24,11 +25,14 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
   const [isSaved, setIsSaved] = useState(false);
   const [isFollowing, setIsFollowing] = useState(song.isFollowingArtist ?? false);
   
-  // Fetch initial like/save state from API
+  const { toast } = useToast();
+
+  // Fetch initial like/save/follow state from API
   useEffect(() => {
     const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
     api.isLiked(baseSongId).then(r => setIsLiked(r.liked)).catch(() => {});
     api.isSaved(baseSongId).then(r => setIsSaved(r.saved)).catch(() => {});
+    api.isFollowingArtist(song.artist).then(r => setIsFollowing(r.following)).catch(() => {});
   }, [song.id]);
 
   const [currentLyricIndex, setCurrentLyricIndex] = useState(0);
@@ -90,6 +94,13 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
   const [lastResumeTime, setLastResumeTime] = useState<number | null>(null);
   const [replays, setReplays] = useState(0);
   const [pauseCount, setPauseCount] = useState(0);
+
+  // Stable visualizer bars — computed once per card mount to avoid Math.random() re-renders
+  const visualizerBars = useMemo(() =>
+    [...Array(12)].map(() => ({
+      height: Math.max(10, Math.random() * 100),
+      duration: 0.5 + Math.random() * 0.5,
+    })), []);
 
   // Mock playback logic
   useEffect(() => {
@@ -357,14 +368,15 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
           "absolute bottom-48 left-4 right-16 h-12 flex items-end gap-1 opacity-0 transition-opacity duration-500",
           isPlaying && "opacity-100"
         )}>
-          {[...Array(12)].map((_, i) => (
+          {visualizerBars.map((bar, i) => (
             <div 
               key={i} 
               className="w-1.5 bg-primary/80 rounded-t-sm"
               style={{
-                height: isPlaying ? `${Math.max(10, Math.random() * 100)}%` : '10%',
-                animation: isPlaying ? `equalizer ${0.5 + Math.random() * 0.5}s ease-in-out infinite alternate` : 'none',
-                animationDelay: `${i * 0.1}s`
+                height: isPlaying ? `${bar.height}%` : '10%',
+                animation: isPlaying ? `equalizer ${bar.duration}s ease-in-out infinite alternate` : 'none',
+                animationDelay: `${i * 0.1}s`,
+                transition: 'height 0.3s ease',
               }}
             />
           ))}
@@ -419,13 +431,32 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                   <div className="flex items-center gap-2">
                     <span className="text-base font-medium text-white/90">{song.artist}</span>
                     <button 
-                      onClick={(e) => { e.stopPropagation(); setIsFollowing(!isFollowing); }}
+                      data-testid="button-follow"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const newFollowing = !isFollowing;
+                        setIsFollowing(newFollowing);
+                        if (newFollowing) {
+                          api.followArtist(song.artist)
+                            .then(() => toast({ description: `Following ${song.artist}` }))
+                            .catch(() => { setIsFollowing(false); toast({ description: "Follow failed", variant: "destructive" }); });
+                        } else {
+                          api.unfollowArtist(song.artist)
+                            .then(() => toast({ description: `Unfollowed ${song.artist}` }))
+                            .catch(() => { setIsFollowing(true); toast({ description: "Action failed", variant: "destructive" }); });
+                        }
+                      }}
                       className={cn(
-                        "px-2 py-0.5 rounded-full text-xs font-semibold transition-colors",
-                        isFollowing ? "bg-white/10 text-white/70" : "bg-primary text-primary-foreground"
+                        "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all",
+                        isFollowing
+                          ? "bg-white/10 text-white/70 border border-white/20"
+                          : "bg-primary text-primary-foreground shadow-[0_0_12px_rgba(var(--primary),0.4)]"
                       )}
                     >
-                      {isFollowing ? 'Following' : 'Follow'}
+                      {isFollowing
+                        ? <><UserCheck size={11} /> Following</>
+                        : <><UserPlus size={11} /> Follow</>
+                      }
                     </button>
                   </div>
                 </div>
@@ -454,12 +485,16 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                 const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
                 if (isLiked) {
                   setIsLiked(false);
-                  api.unlikeSong(baseSongId).catch(() => setIsLiked(true));
+                  api.unlikeSong(baseSongId)
+                    .then(() => queryClient.invalidateQueries({ queryKey: ["liked-songs"] }))
+                    .catch(() => setIsLiked(true));
                 } else {
                   setIsLiked(true);
                   setShowHeartAnimation(true);
                   setTimeout(() => setShowHeartAnimation(false), 1000);
-                  api.likeSong(baseSongId).catch(() => setIsLiked(false));
+                  api.likeSong(baseSongId)
+                    .then(() => queryClient.invalidateQueries({ queryKey: ["liked-songs"] }))
+                    .catch(() => setIsLiked(false));
                 }
               }}
               className="flex flex-col items-center gap-1 group/btn"
@@ -489,10 +524,20 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                 const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
                 if (isSaved) {
                   setIsSaved(false);
-                  api.unsaveSong(baseSongId).catch(() => setIsSaved(true));
+                  api.unsaveSong(baseSongId)
+                    .then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["saved-songs"] });
+                      toast({ description: "Removed from saved" });
+                    })
+                    .catch(() => setIsSaved(true));
                 } else {
                   setIsSaved(true);
-                  api.saveSong(baseSongId).catch(() => setIsSaved(false));
+                  api.saveSong(baseSongId)
+                    .then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["saved-songs"] });
+                      toast({ description: "Saved to your library" });
+                    })
+                    .catch(() => setIsSaved(false));
                 }
               }}
               className="flex flex-col items-center gap-1 group/btn"
