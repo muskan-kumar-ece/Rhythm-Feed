@@ -28,7 +28,16 @@ export type ApiSong = {
   };
   uploadedBy: string | null;
   createdAt: string;
-  // Client-side only (not from DB, fetched separately if needed)
+  // Ranking metadata injected by the server ranking engine
+  _score?: number;
+  _scoreBreakdown?: {
+    taste: number;
+    recentBehavior: number;
+    engagement: number;
+    trending: number;
+    timeOfDay: number;
+  };
+  // Client-side only
   isFollowingArtist?: boolean;
 };
 
@@ -72,6 +81,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 // Songs
 export const api = {
   getSongs: () => request<ApiSong[]>("/api/songs"),
+  getRankedSongs: () => request<ApiSong[]>("/api/songs/ranked"),
   getSongsByMood: (mood: string) => request<ApiSong[]>(`/api/songs/mood/${encodeURIComponent(mood)}`),
   searchSongs: (query: string) => request<ApiSong[]>(`/api/songs/search?q=${encodeURIComponent(query)}`),
   createSong: (data: Partial<ApiSong>) => request<ApiSong>("/api/songs", { method: "POST", body: JSON.stringify(data) }),

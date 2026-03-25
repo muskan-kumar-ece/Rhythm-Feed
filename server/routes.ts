@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { rankSongsForUser } from "./ranking";
 import { insertMomentSchema, insertBehaviorLogSchema, insertSongSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -16,6 +17,16 @@ export async function registerRoutes(
   app.get("/api/songs", async (_req: Request, res: Response) => {
     const songs = await storage.getSongs();
     res.json(songs);
+  });
+
+  // Ranked feed: score + diversity-order songs for the demo user
+  app.get("/api/songs/ranked", async (_req: Request, res: Response) => {
+    const [allSongs, behaviorLogs] = await Promise.all([
+      storage.getSongs(),
+      storage.getUserBehaviorLogs(DEMO_USER_ID),
+    ]);
+    const ranked = rankSongsForUser(allSongs, behaviorLogs);
+    res.json(ranked);
   });
 
   app.get("/api/songs/search", async (req: Request, res: Response) => {

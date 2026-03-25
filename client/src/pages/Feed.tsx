@@ -15,10 +15,11 @@ export default function Feed() {
   const [feedItems, setFeedItems] = useState<ApiSong[]>([]);
   const [showGreeting, setShowGreeting] = useState(true);
 
-  // Fetch all songs from the API
+  // Fetch server-ranked songs — backend applies taste profile + engagement + diversity
   const { data: allSongs, isLoading } = useQuery({
-    queryKey: ["songs"],
-    queryFn: () => api.getSongs(),
+    queryKey: ["ranked-songs"],
+    queryFn: () => api.getRankedSongs(),
+    staleTime: 2 * 60 * 1000, // re-rank at most every 2 minutes
   });
 
   // Seed the recommendation engine once songs are loaded
