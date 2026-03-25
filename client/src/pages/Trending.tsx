@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, Zap, MessageSquareQuote, Search, RefreshCw, Play, Flame, ArrowUpRight, Clock } from "lucide-react";
 import { api, type ApiSong, type ApiTrendingMomentSong } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import RythamLogo from "@/components/RythamLogo";
 
 function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -167,19 +168,22 @@ export default function Trending() {
   const isLoading = viralLoading && fastestLoading && momentsLoading;
 
   return (
-    <div className="h-[100dvh] w-full bg-black flex flex-col overflow-hidden">
+    <div className="h-[100dvh] w-full bg-background flex flex-col overflow-hidden page-enter">
 
       {/* Header */}
-      <div className="pt-12 pb-3 px-4 bg-gradient-to-b from-black to-black/80 shrink-0 z-10">
+      <div className="pt-12 pb-3 px-4 bg-background/90 backdrop-blur-xl border-b border-white/5 shrink-0 z-10">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <TrendingUp size={20} className="text-primary" />
-            <h1 className="text-xl font-display font-bold text-white">Trending</h1>
+            <TrendingUp size={18} className="text-primary" />
+            <h1 className="text-xl font-display font-bold tracking-tight gradient-text-subtle">Trending</h1>
           </div>
-          <div className="flex items-center gap-1 text-[10px] text-white/30">
-            <RefreshCw size={10} className={isLoading ? "animate-spin" : ""} />
-            <span>Live</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse ml-1" />
+          <div className="flex items-center gap-2">
+            <RythamLogo size="xs" showMark />
+            <div className="flex items-center gap-1 text-[10px] text-white/30">
+              <RefreshCw size={10} className={isLoading ? "animate-spin" : ""} />
+              <span>Live</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse ml-1" />
+            </div>
           </div>
         </div>
 

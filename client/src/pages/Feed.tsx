@@ -21,11 +21,12 @@ import {
 } from "@/lib/session";
 import { Bot, Sparkles, RadioTower } from "lucide-react";
 import { cn } from "@/lib/utils";
+import RythamLogo from "@/components/RythamLogo";
 
 const MOODS = ["For You", "Focus", "Night Drive", "Gym", "Study", "Chill", "Sad", "Hype"];
 
 // Show the AI DJ intro once per browser session (not every tab switch)
-const DJ_INTRO_KEY = "vibescroll_dj_intro_shown";
+const DJ_INTRO_KEY = "rytham_dj_intro_shown";
 
 export default function Feed() {
   const [activeIndex, setActiveIndex]   = useState(0);
@@ -239,36 +240,37 @@ export default function Feed() {
   // Step 3: Loading
   if (isLoading || feedItems.length === 0) {
     return (
-      <div className="h-[100dvh] w-full bg-black flex flex-col items-center justify-center gap-6 relative overflow-hidden">
-        {/* Animated background grid of blurred cover tiles */}
-        <div className="absolute inset-0 grid grid-cols-3 grid-rows-4 opacity-20 blur-lg scale-110 pointer-events-none">
+      <div className="h-[100dvh] w-full bg-[hsl(240,12%,3%)] flex flex-col items-center justify-center gap-8 relative overflow-hidden">
+        {/* Blurred mosaic background */}
+        <div className="absolute inset-0 grid grid-cols-3 grid-rows-4 opacity-15 blur-2xl scale-110 pointer-events-none">
           {[...Array(12)].map((_, i) => (
-            <div
-              key={i}
-              className="bg-cover bg-center"
-              style={{ backgroundImage: `url(https://picsum.photos/seed/${i + 10}/200/200)` }}
-            />
+            <div key={i} className="bg-cover bg-center"
+              style={{ backgroundImage: `url(https://picsum.photos/seed/${i + 20}/200/200)` }} />
           ))}
         </div>
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-black/80 pointer-events-none" />
-        {/* Logo + spinner */}
-        <div className="relative z-10 flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center shadow-[0_0_40px_rgba(var(--primary),0.3)]">
-            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-black/90 pointer-events-none" />
+        {/* Ambient bottom glow */}
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-80 h-48 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col items-center gap-6">
+          {/* Logo mark large */}
+          <div className="relative flex items-center justify-center">
+            <div className="absolute w-20 h-20 rounded-full bg-primary/10 blur-xl animate-pulse" />
+            <RythamLogo size="xl" animate className="relative z-10" />
           </div>
-          <div className="text-center">
-            <p className="text-white font-display font-bold text-xl">VibeScroll</p>
-            <p className="text-white/40 text-sm mt-1">Curating your feed…</p>
-          </div>
-          <div className="flex gap-1 mt-2">
-            {[0, 1, 2, 3, 4].map(i => (
-              <div
-                key={i}
-                className="w-1 bg-primary rounded-full"
+
+          <p className="text-white/40 text-sm font-medium tracking-widest uppercase">
+            Curating your feed
+          </p>
+
+          {/* Animated equalizer bars */}
+          <div className="flex items-end gap-1 h-5">
+            {[0.5, 0.8, 1, 0.7, 0.4, 0.9, 0.6].map((h, i) => (
+              <div key={i} className="w-1 bg-primary/70 rounded-full"
                 style={{
-                  height: 8 + Math.sin(i) * 8,
-                  animation: `equalizer ${0.4 + i * 0.1}s ease-in-out infinite alternate`,
-                  animationDelay: `${i * 0.08}s`,
+                  height: `${h * 100}%`,
+                  animation: `equalizer ${0.35 + i * 0.08}s ease-in-out infinite alternate`,
+                  animationDelay: `${i * 0.06}s`,
                 }}
               />
             ))}

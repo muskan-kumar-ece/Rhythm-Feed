@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import RythamLogo from "@/components/RythamLogo";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -135,9 +136,12 @@ export default function ArtistDashboard() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-20 page-enter">
       <header className="pt-12 pb-6 px-6 glass sticky top-0 z-40">
-        <h1 className="text-3xl font-display font-bold text-white tracking-tight">Studio</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-display font-bold tracking-tight gradient-text-subtle">Studio</h1>
+          <RythamLogo size="xs" />
+        </div>
         <div className="flex gap-6 mt-6 border-b border-white/10">
           {(["analytics", "upload"] as const).map(tab => (
             <button

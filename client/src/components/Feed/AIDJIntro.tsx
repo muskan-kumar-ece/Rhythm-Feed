@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiSong } from "@/lib/api";
 import { Bot, Music2, ChevronRight, Sparkles, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import RythamLogo from "@/components/RythamLogo";
 
 interface AIDJIntroProps {
   onReady: (playlist: ApiSong[], greeting: string, theme: string) => void;
@@ -102,14 +103,17 @@ export default function AIDJIntro({ onReady, prefs }: AIDJIntroProps) {
 
       <div className="relative z-10 flex flex-col items-center gap-6 px-8 text-center max-w-sm w-full">
 
+        {/* Brand mark */}
+        <RythamLogo size="md" animate={phase === "reveal" || phase === "loading"} className="mb-1" />
+
         {/* DJ Avatar */}
         <div className="relative">
-          <div className="w-24 h-24 rounded-full bg-primary/20 border-2 border-primary/40 flex items-center justify-center relative overflow-hidden">
+          <div className="w-20 h-20 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center relative overflow-hidden">
             <div className={cn(
               "absolute inset-0 bg-primary/20 rounded-full transition-all duration-500",
               phase === "loading" ? "animate-pulse" : phase === "reveal" ? "animate-ping" : ""
             )} />
-            <Bot size={40} className="text-primary relative z-10" />
+            <Bot size={36} className="text-primary relative z-10" />
           </div>
           {/* Orbiting sparkles */}
           {phase === "reveal" && (

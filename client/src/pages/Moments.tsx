@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, MessageCircle, PlayCircle, MoreHorizontal, Plus, Quote, TrendingUp, Disc3, Flame, Music2 } from "lucide-react";
 import { ApiMoment, ApiSong, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import RythamLogo from "@/components/RythamLogo";
 
 interface LocalComment {
   id: number;
@@ -65,12 +66,15 @@ export default function Moments() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20 relative">
+    <div className="min-h-screen bg-background pb-20 relative page-enter">
 
       {/* Header */}
       <header className="pt-12 pb-4 px-6 sticky top-0 z-40 bg-background/90 backdrop-blur-xl border-b border-white/5">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-display font-bold text-white tracking-tight">Moments</h1>
+          <div>
+            <RythamLogo size="xs" className="mb-1 opacity-60" />
+            <h1 className="text-3xl font-display font-bold text-white tracking-tight leading-none">Moments</h1>
+          </div>
           <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
             <Quote size={18} className="text-primary" />
           </div>

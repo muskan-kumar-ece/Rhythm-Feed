@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search as SearchIcon, X, TrendingUp, Hash, UserPlus, Play, Music2 } from "lucide-react";
 import { api, ApiSong } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import RythamLogo from "@/components/RythamLogo";
 
 const MOOD_IMAGES = [
   { mood: "Night Drive", img: "https://images.unsplash.com/photo-1618609378039-b572f369a0c9?q=80&w=500" },
@@ -52,10 +53,13 @@ export default function Search() {
     });
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-20 page-enter">
       {/* Search Header */}
       <div className="pt-12 pb-4 px-4 sticky top-0 z-40 bg-background/90 backdrop-blur-xl border-b border-white/5">
-        <h1 className="text-3xl font-display font-bold text-white mb-4">Discover</h1>
+        <div className="flex items-center justify-between mb-1">
+          <h1 className="text-3xl font-display font-bold tracking-tight gradient-text-subtle">Discover</h1>
+          <RythamLogo size="xs" showMark />
+        </div>
         <div className="relative">
           <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={20} />
           <input

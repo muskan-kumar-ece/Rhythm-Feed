@@ -57,7 +57,7 @@ export interface OnboardingPrefs {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SESSION_TIMEOUT_MS  = 30 * 60 * 1000;
-const ONBOARDING_KEY      = "vibescroll_onboarding";
+const ONBOARDING_KEY      = "rytham_onboarding";
 const ENERGY_RANK: Record<string, number> = { high: 2, medium: 1, low: 0 };
 
 // ─── State ────────────────────────────────────────────────────────────────────

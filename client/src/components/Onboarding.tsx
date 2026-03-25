@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronRight, Music2, Sparkles } from "lucide-react";
+import RythamLogo from "@/components/RythamLogo";
 
 interface OnboardingProps {
   onComplete: (prefs: { moods: string[]; genres: string[] }) => void;
@@ -75,24 +76,31 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   // ── Building screen ─────────────────────────────────────────────────────────
   if (step === "building") {
     return (
-      <div className="fixed inset-0 z-50 bg-[hsl(240,10%,4%)] flex flex-col items-center justify-center gap-8 px-6">
+      <div className="fixed inset-0 z-50 bg-[hsl(240,12%,3%)] flex flex-col items-center justify-center gap-8 px-6 page-enter">
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-72 h-40 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
+
         <div className="relative">
-          <div className="w-24 h-24 rounded-full border-2 border-primary/30 flex items-center justify-center">
-            <div className="w-20 h-20 rounded-full border-2 border-primary/50 flex items-center justify-center animate-spin" style={{ animationDuration: "3s" }}>
+          <div className="absolute inset-0 scale-150 rounded-full bg-primary/10 blur-xl animate-pulse" />
+          <RythamLogo size="lg" animate className="relative z-10" />
+        </div>
+
+        <div className="relative">
+          <div className="w-24 h-24 rounded-full border border-primary/30 flex items-center justify-center">
+            <div className="w-20 h-20 rounded-full border border-primary/50 flex items-center justify-center animate-spin" style={{ animationDuration: "3s" }}>
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
                 <Music2 size={28} className="text-primary" />
               </div>
             </div>
           </div>
           <div className="absolute -top-1 -right-1">
-            <Sparkles size={18} className="text-accent animate-pulse" />
+            <Sparkles size={16} className="text-accent animate-pulse" />
           </div>
         </div>
 
         <div className="text-center">
-          <p className="text-white/60 text-sm font-medium uppercase tracking-widest mb-2">AI DJ</p>
-          <h2 className="text-white text-2xl font-display font-bold mb-1">Building your vibe</h2>
-          <p className="text-white/40 text-sm">
+          <p className="text-white/50 text-xs font-medium uppercase tracking-widest mb-2">AI DJ</p>
+          <h2 className="text-white text-2xl font-display font-bold tracking-tight mb-1">Building your vibe</h2>
+          <p className="text-white/35 text-sm">
             {selectedMoods.slice(0, 2).join(" · ")} · {selectedGenres.slice(0, 2).join(" · ")}
           </p>
         </div>
@@ -122,31 +130,33 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   // ── Shared layout ───────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 bg-[hsl(240,10%,4%)] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[hsl(240,12%,3%)] flex flex-col overflow-hidden page-enter">
+      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-72 h-40 bg-primary/7 rounded-full blur-3xl pointer-events-none" />
       {/* Header */}
       <div className="pt-14 pb-2 px-6 flex-shrink-0">
-        <div className="flex items-center gap-2 mb-5">
-          <div className="w-2 h-2 rounded-full bg-primary" />
-          <div className="w-2 h-2 rounded-full bg-white/20" />
-          <div className="w-2 h-2 rounded-full bg-white/10" />
-          <span className="ml-auto text-white/30 text-xs">Step {step === "moods" ? 1 : 2} of 2</span>
+        {/* Brand + step indicator */}
+        <div className="flex items-center justify-between mb-6">
+          <RythamLogo size="sm" />
+          <div className="flex items-center gap-1.5">
+            <div className={cn("h-1 rounded-full transition-all duration-300", step === "moods" ? "w-6 bg-primary" : "w-2 bg-white/20")} />
+            <div className={cn("h-1 rounded-full transition-all duration-300", step === "genres" ? "w-6 bg-primary" : "w-2 bg-white/20")} />
+            <span className="ml-2 text-white/25 text-xs">Step {step === "moods" ? 1 : 2} / 2</span>
+          </div>
         </div>
 
         {step === "moods" ? (
           <>
-            <h1 className="text-white text-3xl font-display font-bold leading-tight mb-1">
+            <h1 className="text-white text-3xl font-display font-bold leading-tight tracking-tight mb-1">
               What's your vibe?
             </h1>
             <p className="text-white/40 text-sm">Pick the moods you love most</p>
           </>
         ) : (
           <>
-            <h1 className="text-white text-3xl font-display font-bold leading-tight mb-1">
+            <h1 className="text-white text-3xl font-display font-bold leading-tight tracking-tight mb-1">
               Your sound
             </h1>
-            <p className="text-white/40 text-sm">
-              Which genres do you listen to?
-            </p>
+            <p className="text-white/40 text-sm">Which genres do you listen to?</p>
           </>
         )}
       </div>

@@ -6,6 +6,7 @@ import { api, ApiSong } from "@/lib/api";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import RythamLogo from "@/components/RythamLogo";
 
 export default function Profile() {
   const [activeTab, setActiveTab] = useState<'liked' | 'playlists' | 'saved' | 'moments' | 'history'>('liked');
@@ -48,9 +49,12 @@ export default function Profile() {
 
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-20 page-enter">
       {/* Profile Header */}
       <div className="relative pt-12 pb-6 px-6 glass rounded-b-[2.5rem]">
+        <div className="absolute top-6 left-6">
+          <RythamLogo size="xs" />
+        </div>
         <div className="absolute top-6 right-6 flex gap-4">
           <Link href="/admin">
             <a className="w-10 h-10 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center hover:bg-primary/20 transition-colors" title="Platform Analytics">
