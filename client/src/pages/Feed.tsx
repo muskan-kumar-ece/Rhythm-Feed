@@ -1,25 +1,45 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import SongCard from "@/components/Feed/SongCard";
 import { ApiSong, api } from "@/lib/api";
 import { generateFeedSegment, generateMoodFeedSegment, setSongsPool } from "@/lib/recommendation";
-import { Bot } from "lucide-react";
+import { getSessionContext, getSessionTopMood } from "@/lib/session";
+import { Bot, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MOODS = ["For You", "Focus", "Night Drive", "Gym", "Study", "Chill", "Sad", "Hype"];
 
 export default function Feed() {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [selectedMood, setSelectedMood] = useState("For You");
-  const [feedItems, setFeedItems] = useState<ApiSong[]>([]);
-  const [showGreeting, setShowGreeting] = useState(true);
+  const [activeIndex, setActiveIndex]     = useState(0);
+  const containerRef                      = useRef<HTMLDivElement>(null);
+  const [selectedMood, setSelectedMood]   = useState("For You");
+  const [feedItems, setFeedItems]         = useState<ApiSong[]>([]);
+  const [showGreeting, setShowGreeting]   = useState(true);
 
-  // Fetch server-ranked songs — backend applies taste profile + engagement + diversity
+  // ── Session awareness ────────────────────────────────────────────────────────
+  // sessionVersion increments every 3 songs — this triggers a re-fetch of the
+  // ranked feed with the latest SessionContext so the server can re-rank in
+  // real-time based on what the user has actually been listening to.
+  const [sessionVersion, setSessionVersion] = useState(0);
+  const sessionCountRef                     = useRef(0);
+  const queryClient                         = useQueryClient();
+
+  const handleSessionEvent = useCallback(() => {
+    sessionCountRef.current += 1;
+    if (sessionCountRef.current % 3 === 0) {
+      // Invalidate the ranked songs cache so the next fetch includes fresh context
+      queryClient.invalidateQueries({ queryKey: ["ranked-songs"] });
+      setSessionVersion(v => v + 1);
+    }
+  }, [queryClient]);
+
+  // ── Ranked songs query ───────────────────────────────────────────────────────
+  // Include sessionVersion in the key so new versions trigger a refetch.
+  // The queryFn reads the *current* session context at call time.
   const { data: allSongs, isLoading } = useQuery({
-    queryKey: ["ranked-songs"],
-    queryFn: () => api.getRankedSongs(),
-    staleTime: 2 * 60 * 1000, // re-rank at most every 2 minutes
+    queryKey: ["ranked-songs", sessionVersion],
+    queryFn: () => api.getRankedSongs(getSessionContext()),
+    staleTime: 2 * 60 * 1000, // re-rank at most every 2 minutes (or on session version bump)
   });
 
   // Seed the recommendation engine once songs are loaded
@@ -95,6 +115,13 @@ export default function Feed() {
   else if (hour >= 12 && hour < 17) timeOfDay = "Afternoon";
   else if (hour >= 17 && hour < 21) timeOfDay = "Evening";
 
+  // Session-aware greeting
+  const sessionTopMood   = getSessionTopMood();
+  const sessionCtxNow    = getSessionContext();
+  const greetingMessage  = sessionTopMood
+    ? `Your ${sessionTopMood} session is curated. Feed adapting in real-time.`
+    : `Good ${timeOfDay}! Here are songs perfect for your current vibe.`;
+
   return (
     <div className="relative h-[100dvh] w-full bg-black">
       
@@ -130,13 +157,30 @@ export default function Feed() {
             <Bot size={24} className="text-primary relative z-10" />
           </div>
           <div>
-            <p className="text-primary text-xs font-bold uppercase tracking-wider mb-0.5">AI Personal DJ</p>
+            <p className="text-primary text-xs font-bold uppercase tracking-wider mb-0.5">
+              {sessionTopMood ? "Session DJ — Live" : "AI Personal DJ"}
+            </p>
             <p className="text-white text-sm font-medium leading-tight">
-              Good {timeOfDay}! Here are songs perfect for your current vibe.
+              {greetingMessage}
             </p>
           </div>
         </div>
       </div>
+
+      {/* Now Vibing indicator — appears after 3+ songs in session */}
+      {sessionCtxNow && sessionCtxNow.sessionMoods.length > 0 && (
+        <div className="absolute top-28 right-4 z-50 pointer-events-none">
+          <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md border border-primary/30 rounded-full px-3 py-1.5">
+            <Sparkles size={11} className="text-primary animate-pulse" />
+            <span className="text-[10px] font-bold text-primary/90 tracking-wide uppercase">
+              {sessionCtxNow.sessionMoods[0]}
+            </span>
+            {sessionCtxNow.sessionMoods[1] && (
+              <span className="text-[10px] text-white/40">· {sessionCtxNow.sessionMoods[1]}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       <div 
         ref={containerRef}
@@ -157,6 +201,7 @@ export default function Feed() {
               song={song} 
               isActive={index === activeIndex} 
               shouldPreload={index === activeIndex + 1}
+              onSessionEvent={handleSessionEvent}
             />
           );
         })}

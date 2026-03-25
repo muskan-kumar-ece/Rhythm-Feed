@@ -20,6 +20,35 @@
 import type { Song, BehaviorLog } from "@shared/schema";
 import { applyDistributionGate } from "./discovery";
 
+// ─── Session Context ──────────────────────────────────────────────────────────
+
+/** Mirrors the SessionContext type sent by the client. */
+export interface SessionContext {
+  recentSongIds:  string[];
+  sessionMoods:   string[];
+  sessionGenres:  string[];
+  sessionEnergy:  string;
+  energyDrift:    string;
+  sessionLength:  number;
+  startedAt:      number;
+}
+
+/**
+ * Mood opposition table.
+ * When the session is dominated by a mood from this map, songs tagged with
+ * any of the opposing moods receive a penalty.
+ */
+const OPPOSING_MOODS: Record<string, string[]> = {
+  Chill:     ["Gym", "Aggressive", "Hype"],
+  Sad:       ["Gym", "Hype", "Aggressive"],
+  Relax:     ["Gym", "Aggressive", "Hype"],
+  Study:     ["Gym", "Aggressive", "Hype"],
+  Cozy:      ["Gym", "Aggressive", "Hype"],
+  Gym:       ["Sad", "Chill", "Relax", "Cozy"],
+  Hype:      ["Sad", "Melancholy", "Relax", "Cozy"],
+  Aggressive:["Sad", "Chill", "Relax", "Cozy"],
+};
+
 // ─── Pool Types ───────────────────────────────────────────────────────────────
 
 /** Which candidate pools a song was nominated by. */
@@ -198,6 +227,61 @@ function generateCandidates(allSongs: Song[], profile: TasteProfile): Candidate[
 }
 
 // ─── Stage 2: Scoring ─────────────────────────────────────────────────────────
+
+/**
+ * Session context score: how well does this song match the user's *right-now*
+ * mood and energy, inferred from what they've actually listened to this session?
+ *
+ * Returns 0–100 (50 = no session / neutral).
+ *
+ * Signals used:
+ *   +20 per matching session mood (up to 3 moods → +60)
+ *   +15 per matching session genre (up to 3 genres → +45)
+ *   +15 if energy matches the session's dominant energy
+ *   +10 if song fits the session's energy drift direction
+ *   -25 per session mood whose "opposite" moods include this song's mood
+ *
+ * The score is then clamped to [0, 100].
+ */
+function _sessionContextScore(song: Song, ctx: SessionContext | undefined): number {
+  if (!ctx || ctx.sessionLength < 2) return 50;
+
+  const songMoods  = new Set(song.features.mood);
+  const songGenres = new Set(song.features.genre);
+
+  let score = 50;
+
+  // ── Mood match ─────────────────────────────────────────────────────────────
+  for (const m of ctx.sessionMoods) {
+    if (songMoods.has(m)) score += 20;
+  }
+
+  // ── Genre match ────────────────────────────────────────────────────────────
+  for (const g of ctx.sessionGenres) {
+    if (songGenres.has(g)) score += 15;
+  }
+
+  // ── Energy match ───────────────────────────────────────────────────────────
+  if (song.features.energy === ctx.sessionEnergy) score += 15;
+
+  // ── Energy drift ───────────────────────────────────────────────────────────
+  if (ctx.energyDrift === "up"   && song.features.energy === "high") score += 10;
+  if (ctx.energyDrift === "down" && song.features.energy === "low")  score += 10;
+
+  // ── Mood opposition penalty ────────────────────────────────────────────────
+  // Penalise songs whose mood would feel jarring relative to the session vibe.
+  for (const sessionMood of ctx.sessionMoods) {
+    const opposites = OPPOSING_MOODS[sessionMood] ?? [];
+    for (const opp of opposites) {
+      if (songMoods.has(opp)) {
+        score -= 25;
+        break; // only penalise once per session mood to avoid stacking
+      }
+    }
+  }
+
+  return Math.max(0, Math.min(score, 100));
+}
 
 /**
  * Engagement quality: how good is the song based on real listen + reaction data?
@@ -417,6 +501,7 @@ export interface RankedSong extends Song {
   _scoreBreakdown: {
     engagement: number;
     taste: number;
+    sessionContext: number;
     recentBehavior: number;
     recency: number;
     timeOfDay: number;
@@ -433,11 +518,19 @@ export interface RankedSong extends Song {
  * Main entry point. Runs the full three-stage pipeline and returns songs
  * ordered for the feed, annotated with score metadata.
  *
- * @param allSongs   Full catalogue from the database.
- * @param logs       Behaviour logs for the requesting user.
- * @returns          Songs ordered by relevance + diversity, with `_score` etc.
+ * @param allSongs    Full catalogue from the database.
+ * @param logs        Behaviour logs for the requesting user.
+ * @param sessionCtx  Optional real-time session context sent by the client.
+ *                    When provided, the 6th scoring component (session context,
+ *                    20% weight) activates and dynamically boosts songs that
+ *                    match the user's current session mood/energy.
+ * @returns           Songs ordered by relevance + diversity, with `_score` etc.
  */
-export function rankSongsForUser(allSongs: Song[], logs: BehaviorLog[]): RankedSong[] {
+export function rankSongsForUser(
+  allSongs:    Song[],
+  logs:        BehaviorLog[],
+  sessionCtx?: SessionContext
+): RankedSong[] {
   const hour    = new Date().getHours();
   const profile = buildTasteProfile(logs, allSongs);
 
@@ -455,27 +548,37 @@ export function rankSongsForUser(allSongs: Song[], logs: BehaviorLog[]): RankedS
   const candidates = generateCandidates(gatedSongs, profile);
 
   // ── Stage 2: Scoring ───────────────────────────────────────────────────────
+  //
+  // Weight breakdown (sums to 100%):
+  //   Engagement quality  30%   – play / reaction data quality
+  //   Taste similarity    25%   – long-term preference match
+  //   Session context     20%   – real-time mood / energy match (this session)
+  //   Recent behaviour    15%   – short-term like / skip signals
+  //   Recency / freshness  7%   – upload age decay
+  //   Time of day          3%   – hour-based mood context
+  //   + flat pool-consensus bonus
   const scored = candidates.map(candidate => {
     const { song, pools } = candidate;
 
-    const engagement  = _engagementScore(song);
-    const taste       = _tasteSimilarityScore(song, profile);
-    const recency     = _recencyScore(song);
-    const recentBehav = _recentBehaviorScore(song, profile);
-    const timeOfDay   = _timeOfDayScore(song, hour);
-    const poolBonus   = Math.min((pools.length - 1) * 10, 20);
+    const engagement   = _engagementScore(song);
+    const taste        = _tasteSimilarityScore(song, profile);
+    const session      = _sessionContextScore(song, sessionCtx);
+    const recency      = _recencyScore(song);
+    const recentBehav  = _recentBehaviorScore(song, profile);
+    const timeOfDay    = _timeOfDayScore(song, hour);
+    const poolBonus    = Math.min((pools.length - 1) * 10, 20);
 
-    // Distribution multiplier: suppressed songs (low score) rank lower,
-    // fully-distributed songs rank at full strength.
+    // Distribution multiplier: suppressed songs rank lower.
     // test=10 → 0.10×, growth=40 → 0.60×, broad=75 → 0.88×, full=100 → 1.0×
     const distMult = Math.pow(song.distributionScore / 100, 0.6);
 
     const rawScore = (
-      engagement  * 0.35 +
-      taste       * 0.30 +
+      engagement  * 0.30 +
+      taste       * 0.25 +
+      session     * 0.20 +
       recentBehav * 0.15 +
-      recency     * 0.10 +
-      timeOfDay   * 0.05 +
+      recency     * 0.07 +
+      timeOfDay   * 0.03 +
       poolBonus
     );
 
@@ -487,6 +590,7 @@ export function rankSongsForUser(allSongs: Song[], logs: BehaviorLog[]): RankedS
       breakdown: {
         engagement:             Math.round(engagement  * 10) / 10,
         taste:                  Math.round(taste       * 10) / 10,
+        sessionContext:         Math.round(session     * 10) / 10,
         recentBehavior:         Math.round(recentBehav * 10) / 10,
         recency:                Math.round(recency     * 10) / 10,
         timeOfDay,

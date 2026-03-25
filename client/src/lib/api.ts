@@ -1,4 +1,5 @@
 // Central API client - all backend calls go through here
+import type { SessionContext } from "./session";
 
 export type ApiSong = {
   id: string;
@@ -28,18 +29,24 @@ export type ApiSong = {
   };
   uploadedBy: string | null;
   createdAt: string;
+  // Distribution system
+  distributionScore?: number;
+  distributionPhase?: string;
   // Ranking metadata injected by the server (Stages 1–3)
   _score?: number;
   _scoreBreakdown?: {
     engagement: number;
     taste: number;
+    sessionContext: number;
     recentBehavior: number;
     recency: number;
     timeOfDay: number;
     poolBonus: number;
+    distributionMultiplier: number;
   };
   /** Which candidate pools nominated this song: taste | trending | new | exploration */
   _pools?: Array<"taste" | "trending" | "new" | "exploration">;
+  _distributionPhase?: string;
   // Client-side only
   isFollowingArtist?: boolean;
 };
@@ -84,7 +91,12 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 // Songs
 export const api = {
   getSongs: () => request<ApiSong[]>("/api/songs"),
-  getRankedSongs: () => request<ApiSong[]>("/api/songs/ranked"),
+  getRankedSongs: (ctx?: SessionContext | null) => {
+    const url = ctx
+      ? `/api/songs/ranked?ctx=${encodeURIComponent(JSON.stringify(ctx))}`
+      : "/api/songs/ranked";
+    return request<ApiSong[]>(url);
+  },
   getSongsByMood: (mood: string) => request<ApiSong[]>(`/api/songs/mood/${encodeURIComponent(mood)}`),
   searchSongs: (query: string) => request<ApiSong[]>(`/api/songs/search?q=${encodeURIComponent(query)}`),
   createSong: (data: Partial<ApiSong>) => request<ApiSong>("/api/songs", { method: "POST", body: JSON.stringify(data) }),

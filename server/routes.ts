@@ -28,12 +28,22 @@ export async function registerRoutes(
   });
 
   // Ranked feed: score + diversity-order songs for the demo user
-  app.get("/api/songs/ranked", async (_req: Request, res: Response) => {
+  // Accepts optional ?ctx=<url-encoded-json> (SessionContext from the client)
+  app.get("/api/songs/ranked", async (req: Request, res: Response) => {
     const [allSongs, behaviorLogs] = await Promise.all([
       storage.getSongs(),
       storage.getUserBehaviorLogs(DEMO_USER_ID),
     ]);
-    const ranked = rankSongsForUser(allSongs, behaviorLogs);
+
+    let sessionCtx: Parameters<typeof rankSongsForUser>[2] = undefined;
+    try {
+      const rawCtx = req.query.ctx as string | undefined;
+      if (rawCtx) sessionCtx = JSON.parse(decodeURIComponent(rawCtx));
+    } catch {
+      // Malformed ctx — proceed without session context
+    }
+
+    const ranked = rankSongsForUser(allSongs, behaviorLogs, sessionCtx);
     res.json(ranked);
   });
 

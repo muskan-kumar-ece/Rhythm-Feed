@@ -3,14 +3,17 @@ import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3
 import { ApiSong, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
+import { recordSessionPlay } from "@/lib/session";
 
 interface SongCardProps {
   song: ApiSong;
   isActive: boolean;
   shouldPreload?: boolean;
+  /** Called after a song interaction is committed — Feed uses this to track session progress. */
+  onSessionEvent?: () => void;
 }
 
-export default function SongCard({ song, isActive, shouldPreload = false }: SongCardProps) {
+export default function SongCard({ song, isActive, shouldPreload = false, onSessionEvent }: SongCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -191,6 +194,21 @@ export default function SongCard({ song, isActive, shouldPreload = false }: Song
           timestamp: new Date().toISOString(),
           timeOfDay
         });
+
+        // Update session context tracker for real-time feed personalisation
+        recordSessionPlay({
+          songId:      song.id,
+          title:       song.title,
+          artist:      song.artist,
+          moods:       song.features.mood,
+          genres:      song.features.genre,
+          energy:      song.features.energy,
+          liked:       isLiked,
+          skipped:     isSkip,
+          durationSec: durationRounded,
+        });
+        // Notify Feed.tsx that a session event occurred (used for adaptive re-ranking)
+        onSessionEvent?.();
 
         // Also persist to the real backend
         const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
