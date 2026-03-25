@@ -1,6 +1,16 @@
 import { Song, dummySongs } from "./dummyData";
 import { behaviorLogs } from "./tracking";
 
+// Mock database of other users' listening behaviors to simulate collaborative filtering
+const mockOtherUsersBehavior = [
+  { userId: 'u1', likes: ['1', '3'], replays: ['1'] },
+  { userId: 'u2', likes: ['2', '4'], replays: ['2', '4'] },
+  { userId: 'u3', likes: ['1', '2'], replays: ['2'] },
+  { userId: 'u4', likes: ['3', '4'], replays: ['3'] },
+  { userId: 'u5', likes: ['1', '4'], replays: ['1'] },
+  { userId: 'u6', likes: ['2', '3'], replays: ['3'] },
+];
+
 /**
  * Calculates a dynamic viral score based on engagement metrics.
  * Uses a weighted algorithm to determine how "hot" a song is.
@@ -63,32 +73,47 @@ export function calculateTrendingScore(song: Song): number {
 }
 
 /**
- * Calculates a similarity score between a user's taste profile and a song's features.
+ * Calculates a collaborative filtering score based on similar users' behaviors.
  */
-function calculateTasteMatchScore(song: Song, preferredMoods: Record<string, number>): number {
+function calculateCollaborativeScore(
+  targetSongId: string, 
+  currentUserLikedIds: string[], 
+  currentUserReplayedIds: string[]
+): number {
   let score = 0;
   
-  // 1. Mood Matching (Heavy weight)
-  song.features.mood.forEach(m => {
-    if (preferredMoods[m]) {
-      score += preferredMoods[m] * 2; 
+  // Find users who have similar taste
+  mockOtherUsersBehavior.forEach(otherUser => {
+    let similarity = 0;
+    
+    // They liked the same songs
+    const commonLikes = otherUser.likes.filter(id => currentUserLikedIds.includes(id));
+    similarity += commonLikes.length * 2;
+    
+    // They replayed the same songs
+    const commonReplays = otherUser.replays.filter(id => currentUserReplayedIds.includes(id));
+    similarity += commonReplays.length * 3;
+    
+    // If they have similar taste, and they engaged with the TARGET song
+    // we boost the target song's score proportionally to the user similarity
+    if (similarity > 0) {
+      if (otherUser.likes.includes(targetSongId)) {
+        score += similarity * 5;
+      }
+      if (otherUser.replays.includes(targetSongId)) {
+        score += similarity * 8;
+      }
     }
   });
-
-  // 2. Base Popularity / Viral potential (Acts as a tiebreaker)
-  const viralScore = calculateViralScore(song);
-  score += (viralScore * 0.1); 
-
-  // 3. Trending boost (If it's gaining rapid momentum, we push it slightly out of their comfort zone)
-  const trendingScore = calculateTrendingScore(song);
-  score += (trendingScore * 0.15);
-
-  return score;
+  
+  // Normalize score to 0-100 range roughly
+  return Math.min(score, 100);
 }
 
 /**
  * A mock recommendation engine that generates a feed segment based on:
  * - Personalized: User's listening history
+ * - Collaborative: Similar users' preferences
  * - Viral/Trending: Songs with the highest dynamic viral score
  * - Rapid Momentum: Songs actively trending in the last 24 hours
  * - New: Recently uploaded songs
@@ -97,9 +122,18 @@ function calculateTasteMatchScore(song: Song, preferredMoods: Record<string, num
 export function generateFeedSegment(): Song[] {
   // 1. Build User Taste Profile from Behavior Logs
   const moodScores: Record<string, number> = {};
+  const currentUserLikedIds: string[] = [];
+  const currentUserReplayedIds: string[] = [];
   
   if (behaviorLogs.length > 0) {
     behaviorLogs.forEach(log => {
+      if (log.liked && !currentUserLikedIds.includes(log.songId)) {
+        currentUserLikedIds.push(log.songId);
+      }
+      if (log.replays > 0 && !currentUserReplayedIds.includes(log.songId)) {
+        currentUserReplayedIds.push(log.songId);
+      }
+
       const song = dummySongs.find(s => s.id === log.songId);
       if (song) {
         let score = 0;
@@ -139,18 +173,22 @@ export function generateFeedSegment(): Song[] {
       song.features.mood.forEach(m => {
         if (moodScores[m]) tasteMatch += moodScores[m] * 5; 
       });
-      score += Math.min(tasteMatch, 100) * 0.4; // 40% weight
+      score += Math.min(tasteMatch, 100) * 0.3; // 30% weight
+
+      // 2. Collaborative Filtering (0-100)
+      const collabScore = calculateCollaborativeScore(song.id, currentUserLikedIds, currentUserReplayedIds);
+      score += collabScore * 0.25; // 25% weight
     }
 
-    // 2. Engagement Metrics (0-100)
+    // 3. Engagement Metrics (0-100)
     const viral = calculateViralScore(song);
-    score += viral * 0.3; // 30% weight
+    score += viral * 0.25; // 25% weight
     
-    // 3. Trending Momentum (0-100)
+    // 4. Trending Momentum (0-100)
     const trending = calculateTrendingScore(song);
-    score += Math.min(trending, 100) * 0.2; // 20% weight
+    score += Math.min(trending, 100) * 0.15; // 15% weight
 
-    // 4. Time of Day Context (0-100)
+    // 5. Time of Day Context (0-100)
     const hour = new Date().getHours();
     let timeBonus = 0;
     const isNight = hour >= 21 || hour < 5;
@@ -167,7 +205,7 @@ export function generateFeedSegment(): Song[] {
     } else if (isEvening && song.features.energy === 'medium') {
       timeBonus = 100;
     }
-    score += timeBonus * 0.1; // 10% weight
+    score += timeBonus * 0.05; // 5% weight
 
     return { song, score };
   })
