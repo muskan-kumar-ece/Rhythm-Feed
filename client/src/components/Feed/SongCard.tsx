@@ -7,6 +7,17 @@ import { recordSessionPlay } from "@/lib/session";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
+// Pre-computed particles for the like burst — 8 particles at 45° intervals
+const LIKE_PARTICLES = [...Array(8)].map((_, i) => {
+  const angle = (i / 8) * 2 * Math.PI;
+  const dist = 32 + (i % 3) * 10;
+  return {
+    tx:    `${Math.cos(angle) * dist}px`,
+    ty:    `${Math.sin(angle) * dist}px`,
+    color: ["#f87171","#fb923c","#a78bfa","#f472b6","#60a5fa","#34d399","#facc15","#f87171"][i],
+  };
+});
+
 interface SongCardProps {
   song: ApiSong;
   isActive: boolean;
@@ -96,6 +107,13 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
   const [lastResumeTime, setLastResumeTime] = useState<number | null>(null);
   const [replays, setReplays] = useState(0);
   const [pauseCount, setPauseCount] = useState(0);
+
+  // ── Micro-interaction states ───────────────────────────────────────────────
+  const [likeAnimating, setLikeAnimating]   = useState(false);
+  const [saveAnimating, setSaveAnimating]   = useState(false);
+  const [shareAnimating, setShareAnimating] = useState(false);
+  const [followAnimating, setFollowAnimating] = useState(false);
+  const [showLikeCounter, setShowLikeCounter] = useState(false);
 
   // Stable visualizer bars — computed once per card mount to avoid Math.random() re-renders
   const visualizerBars = useMemo(() =>
@@ -265,6 +283,11 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
     }
   }, [isActive]);
 
+  // ── Haptic feedback utility ───────────────────────────────────────────────
+  const haptic = (pattern: number | number[] = 10) => {
+    try { navigator.vibrate(pattern); } catch {}
+  };
+
   // Double tap to like logic
   const [lastTapTime, setLastTapTime] = useState(0);
 
@@ -276,19 +299,25 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
 
     if (now - lastTapTime < DOUBLE_TAP_WINDOW) {
       // Double-tap: undo any play toggle from first tap, then like
-      setIsPlaying(prev => !prev); // revert first tap's toggle
+      setIsPlaying(prev => !prev);
       if (!isLiked) {
+        haptic([30, 20, 60]); // satisfying double-pulse for like
         setIsLiked(true);
+        setLikeAnimating(true);
+        setShowLikeCounter(true);
         setShowHeartAnimation(true);
+        setTimeout(() => setLikeAnimating(false), 600);
+        setTimeout(() => setShowLikeCounter(false), 900);
         setTimeout(() => setShowHeartAnimation(false), 1000);
         const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
         api.likeSong(baseSongId)
           .then(() => queryClient.invalidateQueries({ queryKey: ["liked-songs"] }))
           .catch(() => setIsLiked(false));
       }
-      setLastTapTime(0); // reset so a third tap doesn't re-trigger
+      setLastTapTime(0);
     } else {
-      // Single tap: immediate play/pause — no delay
+      // Single tap: immediate play/pause
+      haptic(8);
       if (isPlaying) setPauseCount(p => p + 1);
       setIsPlaying(p => !p);
     }
@@ -385,7 +414,12 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
           ))}
         </div>
 
-        <div className="flex items-end justify-between w-full">
+        <div
+          className={cn(
+            "flex items-end justify-between w-full transition-all duration-500 ease-out",
+            isActive ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          )}
+        >
           {/* Left: Info & Lyrics */}
           <div className="flex-1 pr-12 space-y-6">
             
@@ -433,13 +467,16 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-base font-medium text-white/90">{song.artist}</span>
-                    <button 
+                    <button
                       data-testid="button-follow"
                       onClick={(e) => {
                         e.stopPropagation();
                         const newFollowing = !isFollowing;
+                        haptic(newFollowing ? [20, 10, 40] : 15);
                         setIsFollowing(newFollowing);
                         if (newFollowing) {
+                          setFollowAnimating(true);
+                          setTimeout(() => setFollowAnimating(false), 600);
                           api.followArtist(song.artist)
                             .then(() => toast({ description: `Following ${song.artist}` }))
                             .catch(() => { setIsFollowing(false); toast({ description: "Follow failed", variant: "destructive" }); });
@@ -450,11 +487,13 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                         }
                       }}
                       className={cn(
-                        "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all",
+                        "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all active:scale-90",
                         isFollowing
                           ? "bg-white/10 text-white/70 border border-white/20"
-                          : "bg-primary text-primary-foreground shadow-[0_0_12px_rgba(var(--primary),0.4)]"
+                          : "bg-primary text-primary-foreground",
+                        followAnimating && "shadow-[0_0_20px_6px_rgba(168,85,247,0.5)]"
                       )}
+                      style={followAnimating ? { animation: "follow-flash 0.5s ease-out" } : undefined}
                     >
                       {isFollowing
                         ? <><UserCheck size={11} /> Following</>
@@ -482,38 +521,81 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
 
           {/* Right: Actions */}
           <div className="flex flex-col items-center gap-6 pb-2">
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
                 if (isLiked) {
+                  haptic(12);
                   setIsLiked(false);
                   api.unlikeSong(baseSongId)
                     .then(() => queryClient.invalidateQueries({ queryKey: ["liked-songs"] }))
                     .catch(() => setIsLiked(true));
                 } else {
+                  haptic([30, 20, 60]);
                   setIsLiked(true);
+                  setLikeAnimating(true);
+                  setShowLikeCounter(true);
                   setShowHeartAnimation(true);
+                  setTimeout(() => setLikeAnimating(false), 600);
+                  setTimeout(() => setShowLikeCounter(false), 900);
                   setTimeout(() => setShowHeartAnimation(false), 1000);
                   api.likeSong(baseSongId)
                     .then(() => queryClient.invalidateQueries({ queryKey: ["liked-songs"] }))
                     .catch(() => setIsLiked(false));
                 }
               }}
-              className="flex flex-col items-center gap-1 group/btn"
+              className="flex flex-col items-center gap-1 group/btn active:scale-90 transition-transform"
               data-testid="button-like"
             >
-              <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
-                <Heart size={26} className={cn("transition-colors", isLiked ? "fill-destructive text-destructive" : "text-white")} />
+              <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors relative">
+                {/* Ripple ring on like */}
+                {likeAnimating && (
+                  <div
+                    className="absolute inset-0 rounded-full border-2 border-red-400"
+                    style={{ animation: "ripple-out 0.5s ease-out forwards" }}
+                  />
+                )}
+                {/* Particle burst */}
+                {likeAnimating && LIKE_PARTICLES.map((p, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-2 h-2 rounded-full pointer-events-none"
+                    style={{
+                      top: "50%", left: "50%",
+                      marginTop: -4, marginLeft: -4,
+                      background: p.color,
+                      "--tx": p.tx, "--ty": p.ty,
+                      animation: `particle-burst ${0.35 + i * 0.04}s ease-out forwards`,
+                      animationDelay: `${i * 0.02}s`,
+                    } as React.CSSProperties}
+                  />
+                ))}
+                <Heart
+                  size={26}
+                  className={cn("transition-colors", isLiked ? "fill-red-400 text-red-400" : "text-white")}
+                  style={likeAnimating ? { animation: "like-pop 0.55s cubic-bezier(0.36,0.07,0.19,0.97)" } : undefined}
+                />
               </div>
-              <span className="text-xs font-medium text-white/80 drop-shadow-md">
-                {isLiked ? (song.likes + 1).toLocaleString() : song.likes.toLocaleString()}
-              </span>
+              <div className="relative h-4">
+                <span className="text-xs font-medium text-white/80 drop-shadow-md">
+                  {isLiked ? (song.likes + 1).toLocaleString() : song.likes.toLocaleString()}
+                </span>
+                {/* +1 floating counter */}
+                {showLikeCounter && (
+                  <span
+                    className="absolute -top-1 left-1/2 -translate-x-1/2 text-xs font-bold text-red-400 pointer-events-none whitespace-nowrap"
+                    style={{ animation: "float-counter 0.85s ease-out forwards" }}
+                  >
+                    +1
+                  </span>
+                )}
+              </div>
             </button>
 
-            <button 
-              onClick={handleCommentClick}
-              className="flex flex-col items-center gap-1 group/btn"
+            <button
+              onClick={(e) => { haptic(8); handleCommentClick(e); }}
+              className="flex flex-col items-center gap-1 group/btn active:scale-90 transition-transform"
             >
               <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
                 <MessageCircle size={26} className="text-white" />
@@ -521,43 +603,61 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
               <span className="text-xs font-medium text-white/80 drop-shadow-md">{song.comments.toLocaleString()}</span>
             </button>
 
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
                 if (isSaved) {
+                  haptic(12);
                   setIsSaved(false);
                   api.unsaveSong(baseSongId)
-                    .then(() => {
-                      queryClient.invalidateQueries({ queryKey: ["saved-songs"] });
-                      toast({ description: "Removed from saved" });
-                    })
+                    .then(() => { queryClient.invalidateQueries({ queryKey: ["saved-songs"] }); toast({ description: "Removed from saved" }); })
                     .catch(() => setIsSaved(true));
                 } else {
+                  haptic([20, 10, 30]);
                   setIsSaved(true);
+                  setSaveAnimating(true);
+                  setTimeout(() => setSaveAnimating(false), 500);
                   api.saveSong(baseSongId)
-                    .then(() => {
-                      queryClient.invalidateQueries({ queryKey: ["saved-songs"] });
-                      toast({ description: "Saved to your library" });
-                    })
+                    .then(() => { queryClient.invalidateQueries({ queryKey: ["saved-songs"] }); toast({ description: "Saved to your library" }); })
                     .catch(() => setIsSaved(false));
                 }
               }}
-              className="flex flex-col items-center gap-1 group/btn"
+              className="flex flex-col items-center gap-1 group/btn active:scale-90 transition-transform"
               data-testid="button-save"
             >
-              <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
-                <Bookmark size={26} className={cn("transition-colors", isSaved ? "fill-primary text-primary" : "text-white")} />
+              <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors relative overflow-hidden">
+                {saveAnimating && (
+                  <div
+                    className="absolute inset-0 rounded-full bg-primary/30"
+                    style={{ animation: "ripple-out 0.45s ease-out forwards" }}
+                  />
+                )}
+                <Bookmark
+                  size={26}
+                  className={cn("transition-colors", isSaved ? "fill-primary text-primary" : "text-white")}
+                  style={saveAnimating ? { animation: "save-stamp 0.45s cubic-bezier(0.36,0.07,0.19,0.97)" } : undefined}
+                />
               </div>
               <span className="text-xs font-medium text-white/80 drop-shadow-md">{song.saves.toLocaleString()}</span>
             </button>
 
-            <button 
-              onClick={handleShareClick}
-              className="flex flex-col items-center gap-1 group/btn"
+            <button
+              onClick={(e) => { haptic([15, 10, 20]); setShareAnimating(true); setTimeout(() => setShareAnimating(false), 500); handleShareClick(e); }}
+              className="flex flex-col items-center gap-1 group/btn active:scale-90 transition-transform"
             >
-              <div className="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md flex items-center justify-center border border-primary/50 group-hover/btn:bg-primary/40 transition-colors">
-                <Quote size={24} className="text-primary-foreground" />
+              <div className="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md flex items-center justify-center border border-primary/50 group-hover/btn:bg-primary/40 transition-colors relative">
+                {shareAnimating && (
+                  <div
+                    className="absolute inset-0 rounded-full bg-primary/40"
+                    style={{ animation: "ripple-out 0.4s ease-out forwards" }}
+                  />
+                )}
+                <Quote
+                  size={24}
+                  className="text-primary-foreground"
+                  style={shareAnimating ? { animation: "share-pop 0.45s cubic-bezier(0.36,0.07,0.19,0.97)" } : undefined}
+                />
               </div>
               <span className="text-xs font-medium text-primary drop-shadow-md">Moment</span>
             </button>

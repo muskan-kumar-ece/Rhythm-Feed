@@ -19,10 +19,96 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet">
     <style>
+      /* ── Existing ───────────────────────────── */
       @keyframes equalizer {
-        0% { height: 10%; }
+        0%   { height: 10%; }
         100% { height: 100%; }
       }
+
+      /* ── Like button spring pop ─────────────── */
+      @keyframes like-pop {
+        0%   { transform: scale(1)    rotate(0deg);  }
+        20%  { transform: scale(1.55) rotate(-12deg); }
+        45%  { transform: scale(0.82) rotate(6deg);  }
+        70%  { transform: scale(1.22) rotate(-4deg); }
+        85%  { transform: scale(0.95) rotate(2deg);  }
+        100% { transform: scale(1)    rotate(0deg);  }
+      }
+
+      /* ── Bookmark stamp drop ─────────────────── */
+      @keyframes save-stamp {
+        0%   { transform: scale(1)    rotate(0deg);  }
+        18%  { transform: scale(0.6)  rotate(10deg); }
+        50%  { transform: scale(1.35) rotate(-6deg); }
+        75%  { transform: scale(0.9)  rotate(3deg);  }
+        100% { transform: scale(1)    rotate(0deg);  }
+      }
+
+      /* ── +N counter floating up ─────────────── */
+      @keyframes float-counter {
+        0%   { opacity: 1; transform: translateY(0)    scale(1);   }
+        35%  { opacity: 1; transform: translateY(-18px) scale(1.1); }
+        100% { opacity: 0; transform: translateY(-48px) scale(0.7); }
+      }
+
+      /* ── Particle burst (uses --tx/--ty CSS vars) */
+      @keyframes particle-burst {
+        0%   { opacity: 1; transform: translate(0, 0)                         scale(1);   }
+        50%  { opacity: 0.9; transform: translate(calc(var(--tx)*0.6), calc(var(--ty)*0.6)) scale(0.7); }
+        100% { opacity: 0; transform: translate(var(--tx), var(--ty))         scale(0);   }
+      }
+
+      /* ── Ripple from tap center ──────────────── */
+      @keyframes ripple-out {
+        0%   { transform: scale(0.2); opacity: 0.6; }
+        100% { transform: scale(3.5); opacity: 0;   }
+      }
+
+      /* ── Nav icon bounce on tap ──────────────── */
+      @keyframes nav-bounce {
+        0%   { transform: scale(1)    translateY(0);  }
+        25%  { transform: scale(0.72) translateY(3px); }
+        55%  { transform: scale(1.25) translateY(-5px);}
+        75%  { transform: scale(0.92) translateY(1px); }
+        100% { transform: scale(1)    translateY(0);  }
+      }
+
+      /* ── Glow ring expanding from icon ────────── */
+      @keyframes glow-ring {
+        0%   { transform: scale(0.5); opacity: 0.9; }
+        100% { transform: scale(2.4); opacity: 0;   }
+      }
+
+      /* ── Follow button flash fill ──────────────── */
+      @keyframes follow-flash {
+        0%   { box-shadow: 0 0 0px 0px  rgba(168, 85, 247, 0); }
+        40%  { box-shadow: 0 0 16px 6px rgba(168, 85, 247, 0.6); }
+        100% { box-shadow: 0 0 0px 0px  rgba(168, 85, 247, 0);  }
+      }
+
+      /* ── Share button pop ─────────────────────── */
+      @keyframes share-pop {
+        0%   { transform: scale(1);    }
+        30%  { transform: scale(1.35) rotate(-15deg); }
+        60%  { transform: scale(0.88) rotate(8deg);  }
+        80%  { transform: scale(1.1);  }
+        100% { transform: scale(1);    }
+      }
+
+      /* ── Active nav tab glow pulse ──────────────── */
+      @keyframes nav-glow {
+        0%,100% { opacity: 0.5; transform: scaleX(0.8); }
+        50%     { opacity: 1;   transform: scaleX(1);   }
+      }
+
+      /* ── Moment success checkmark draw ──────────── */
+      @keyframes check-draw {
+        0%   { stroke-dashoffset: 60; }
+        100% { stroke-dashoffset: 0;  }
+      }
+
+      /* ── Prevent mobile tap highlight flash ───── */
+      * { -webkit-tap-highlight-color: transparent; }
     </style>
   </head>
   <body>
