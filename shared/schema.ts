@@ -133,11 +133,23 @@ export const spotlightLikes = pgTable("spotlight_likes", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+// Artist upgrade requests submitted by regular users
+export const artistRequests = pgTable("artist_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  reason: text("reason").notNull().default(""),
+  status: text("status").notNull().default("pending"),  // "pending" | "approved" | "rejected"
+  adminNote: text("admin_note"),                         // admin rejection note
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  reviewedAt: timestamp("reviewed_at"),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertSongSchema = createInsertSchema(songs).omit({ id: true, createdAt: true });
 export const insertMomentSchema = createInsertSchema(moments).omit({ id: true, createdAt: true });
 export const insertBehaviorLogSchema = createInsertSchema(behaviorLogs).omit({ id: true, createdAt: true });
 export const insertSpotlightSchema = createInsertSchema(spotlights).omit({ id: true, createdAt: true });
+export const insertArtistRequestSchema = createInsertSchema(artistRequests).omit({ id: true, createdAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -153,3 +165,6 @@ export type Moment = typeof moments.$inferSelect;
 
 export type InsertBehaviorLog = z.infer<typeof insertBehaviorLogSchema>;
 export type BehaviorLog = typeof behaviorLogs.$inferSelect;
+
+export type InsertArtistRequest = z.infer<typeof insertArtistRequestSchema>;
+export type ArtistRequest = typeof artistRequests.$inferSelect;

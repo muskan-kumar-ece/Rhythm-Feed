@@ -15,7 +15,7 @@ import { analyzeTrack } from "./aiAnalysis";
 import {
   hashPassword, comparePassword,
   setAuthCookie, clearAuthCookie, getTokenFromRequest,
-  attachUser, requireRole,
+  attachUser, requireAuth, requireRole,
 } from "./auth";
 import { z } from "zod";
 import multer from "multer";
@@ -1022,6 +1022,59 @@ export async function registerRoutes(
       res.status(201).json({ spotlight });
     }
   );
+
+  // ── Artist Upgrade Requests ───────────────────────────────────────────────
+
+  // POST /api/artist-request — authenticated user submits a request
+  app.post("/api/artist-request", requireAuth, async (req: Request, res: Response) => {
+    const uid = (req as any).user.userId as string;
+    const userObj = await storage.getUser(uid);
+    if (!userObj) return res.status(404).json({ message: "User not found" });
+    if ((userObj as any).role !== "user") {
+      return res.status(400).json({ message: "Only regular users can request artist access" });
+    }
+
+    // One active request per user
+    const existing = await storage.getArtistRequestByUser(uid);
+    if (existing && existing.status === "pending") {
+      return res.status(409).json({ message: "You already have a pending request", request: existing });
+    }
+
+    const { reason = "" } = req.body;
+    const request = await storage.createArtistRequest(uid, String(reason).slice(0, 1000));
+    return res.status(201).json({ request });
+  });
+
+  // GET /api/artist-request/my — user checks their own request status
+  app.get("/api/artist-request/my", requireAuth, async (req: Request, res: Response) => {
+    const uid = (req as any).user.userId as string;
+    const request = await storage.getArtistRequestByUser(uid);
+    return res.json({ request: request ?? null });
+  });
+
+  // GET /api/admin/artist-requests — admin sees all requests (covered by admin middleware)
+  app.get("/api/admin/artist-requests", async (req: Request, res: Response) => {
+    const status = req.query.status as string | undefined;
+    const requests = await storage.getAllArtistRequests(status);
+    return res.json(requests);
+  });
+
+  // POST /api/admin/artist-requests/:id/approve
+  app.post("/api/admin/artist-requests/:id/approve", async (req: Request, res: Response) => {
+    const updated = await storage.updateArtistRequest(req.params.id, "approved");
+    if (!updated) return res.status(404).json({ message: "Request not found" });
+    // Promote the user's role to artist
+    await storage.updateUserRole(updated.userId, "artist");
+    return res.json({ success: true, request: updated });
+  });
+
+  // POST /api/admin/artist-requests/:id/reject
+  app.post("/api/admin/artist-requests/:id/reject", async (req: Request, res: Response) => {
+    const { adminNote = "" } = req.body;
+    const updated = await storage.updateArtistRequest(req.params.id, "rejected", String(adminNote).slice(0, 500));
+    if (!updated) return res.status(404).json({ message: "Request not found" });
+    return res.json({ success: true, request: updated });
+  });
 
   return httpServer;
 }

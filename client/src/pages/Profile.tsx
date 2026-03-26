@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2, X } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2, X, Mic2, Clock, CheckCircle2, XCircle, RefreshCw, ChevronRight } from "lucide-react";
 import { Link } from "wouter";
-import { api, ApiSong } from "@/lib/api";
+import { api, ApiSong, ApiArtistRequest } from "@/lib/api";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -16,7 +16,47 @@ export default function Profile() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { state } = useAuth();
+  const { state, refresh } = useAuth();
+  const authUser = state.status === "authenticated" ? state.user : null;
+  const role     = authUser?.role ?? "user";
+
+  // ── Artist request (only for regular users) ─────────────────────────────
+  const [showArtistModal, setShowArtistModal] = useState(false);
+  const [requestReason,   setRequestReason]   = useState("");
+  const [refreshingRole,  setRefreshingRole]  = useState(false);
+
+  const { data: myRequestData, refetch: refetchMyRequest } = useQuery({
+    queryKey: ["my-artist-request"],
+    queryFn:  () => api.getMyArtistRequest(),
+    enabled:  role === "user",
+  });
+  const myRequest = myRequestData?.request as ApiArtistRequest | null | undefined;
+
+  const submitRequestMutation = useMutation({
+    mutationFn: (reason: string) => api.submitArtistRequest(reason),
+    onSuccess: () => {
+      toast({ title: "Application submitted!", description: "An admin will review your request." });
+      setShowArtistModal(false);
+      setRequestReason("");
+      refetchMyRequest();
+    },
+    onError: (err: any) => {
+      const msg = err?.message ?? "Failed to submit request";
+      // Already pending → just refresh
+      if (msg.includes("pending")) { refetchMyRequest(); setShowArtistModal(false); return; }
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const handleRoleRefresh = async () => {
+    setRefreshingRole(true);
+    try {
+      await refresh();
+      refetchMyRequest();
+    } finally {
+      setRefreshingRole(false);
+    }
+  };
 
   const { data: userProfile } = useQuery({ queryKey: ["user-profile"], queryFn: () => api.getProfile() });
   const { data: likedSongs = [], isLoading: likedLoading } = useQuery({ queryKey: ["liked-songs"], queryFn: () => api.getLikedSongs() });
@@ -112,6 +152,102 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Become an Artist banner — only for regular users */}
+      {role === "user" && (
+        <div className="px-4 pt-4">
+          {!myRequest ? (
+            /* No request yet — show CTA */
+            <button
+              data-testid="button-become-artist"
+              onClick={() => setShowArtistModal(true)}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-primary/20 to-accent/20 border border-primary/30 hover:border-primary/60 transition-all"
+            >
+              <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                <Mic2 size={16} className="text-primary" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-sm font-semibold text-white">Become an Artist</p>
+                <p className="text-[10px] text-white/40">Apply to upload music and reach listeners</p>
+              </div>
+              <ChevronRight size={16} className="text-white/30 shrink-0" />
+            </button>
+          ) : myRequest.status === "pending" ? (
+            /* Pending */
+            <div
+              data-testid="status-artist-request-pending"
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/30"
+            >
+              <Clock size={16} className="text-amber-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-400">Application Under Review</p>
+                <p className="text-[10px] text-amber-400/60">An admin is reviewing your request</p>
+              </div>
+              <button
+                data-testid="button-refresh-role"
+                onClick={handleRoleRefresh}
+                disabled={refreshingRole}
+                className="text-amber-400/60 hover:text-amber-400 transition-colors disabled:opacity-40"
+                title="Refresh status"
+              >
+                <RefreshCw size={14} className={refreshingRole ? "animate-spin" : ""} />
+              </button>
+            </div>
+          ) : myRequest.status === "approved" ? (
+            /* Approved — role update might be pending a re-login */
+            <div
+              data-testid="status-artist-request-approved"
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-green-500/10 border border-green-500/30"
+            >
+              <CheckCircle2 size={16} className="text-green-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-green-400">Application Approved!</p>
+                <p className="text-[10px] text-green-400/60">Refresh to unlock your artist account</p>
+              </div>
+              <button
+                data-testid="button-refresh-role-approved"
+                onClick={handleRoleRefresh}
+                disabled={refreshingRole}
+                className="text-green-400/60 hover:text-green-400 transition-colors disabled:opacity-40"
+              >
+                <RefreshCw size={14} className={refreshingRole ? "animate-spin" : ""} />
+              </button>
+            </div>
+          ) : myRequest.status === "rejected" ? (
+            /* Rejected */
+            <div
+              data-testid="status-artist-request-rejected"
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-500/10 border border-red-500/30"
+            >
+              <XCircle size={16} className="text-red-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-red-400">Application Not Accepted</p>
+                {myRequest.adminNote && (
+                  <p className="text-[10px] text-red-400/60 truncate">Note: {myRequest.adminNote}</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Artist / Admin badge pill */}
+      {(role === "artist" || role === "admin") && (
+        <div className="px-4 pt-4">
+          <div
+            data-testid="badge-role"
+            className={cn(
+              "inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border",
+              role === "admin"
+                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                : "bg-primary/10 border-primary/30 text-primary"
+            )}
+          >
+            <Mic2 size={12} />
+            {role === "admin" ? "Platform Admin" : "Verified Artist"}
+          </div>
+        </div>
+      )}
 
       {/* Scrollable Tabs */}
       <div className="overflow-x-auto no-scrollbar border-b border-white/5 mt-4">
@@ -387,6 +523,84 @@ export default function Profile() {
       {/* Settings panel (change password + logout) */}
       {showSettings && (
         <SettingsPanel onClose={() => setShowSettings(false)} />
+      )}
+
+      {/* Become an Artist — application modal */}
+      {showArtistModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowArtistModal(false)}
+          />
+          {/* Sheet */}
+          <div className="relative w-full max-w-sm bg-[#0d0d14] border border-white/10 rounded-t-3xl p-6 pb-10 space-y-5 animate-slide-up">
+            {/* Close */}
+            <button
+              data-testid="button-close-artist-modal"
+              onClick={() => setShowArtistModal(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/40 hover:text-white transition-colors"
+            >
+              <X size={16} />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
+                <Mic2 size={20} className="text-primary" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white">Apply to be an Artist</h2>
+                <p className="text-xs text-white/40">Tell us about your music journey</p>
+              </div>
+            </div>
+
+            {/* What you get */}
+            <div className="space-y-2">
+              {[
+                "Upload your original tracks",
+                "Access the Artist Portal",
+                "Reach listeners on the feed",
+                "View track analytics",
+              ].map(perk => (
+                <div key={perk} className="flex items-center gap-2">
+                  <CheckCircle2 size={13} className="text-primary shrink-0" />
+                  <p className="text-xs text-white/60">{perk}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Reason textarea */}
+            <div>
+              <label className="block text-xs font-semibold text-white/50 mb-1.5">
+                Why do you want to be an artist? (optional)
+              </label>
+              <textarea
+                data-testid="input-artist-reason"
+                value={requestReason}
+                onChange={e => setRequestReason(e.target.value)}
+                placeholder="Tell us a little about yourself and your music…"
+                rows={3}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 resize-none outline-none focus:border-primary/40 transition-colors"
+              />
+            </div>
+
+            {/* Submit */}
+            <button
+              data-testid="button-submit-artist-request"
+              disabled={submitRequestMutation.isPending}
+              onClick={() => submitRequestMutation.mutate(requestReason)}
+              className="w-full py-3 rounded-2xl bg-primary text-black font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {submitRequestMutation.isPending ? (
+                <RefreshCw size={16} className="animate-spin" />
+              ) : (
+                <Mic2 size={16} />
+              )}
+              Submit Application
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -3,12 +3,13 @@ import { eq, desc, and, ilike, sql, gte, ne } from "drizzle-orm";
 import pg from "pg";
 import {
   users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes, artistFollows,
-  spotlights, spotlightLikes,
+  spotlights, spotlightLikes, artistRequests,
   type User, type InsertUser,
   type Song, type InsertSong,
   type Moment, type InsertMoment,
   type BehaviorLog, type InsertBehaviorLog,
   type Spotlight, type InsertSpotlight,
+  type ArtistRequest,
 } from "@shared/schema";
 import type { DistributionPhase } from "./discovery";
 
@@ -114,6 +115,13 @@ export interface IStorage {
 
   // Role management
   updateUserRole(id: string, role: string): Promise<User | undefined>;
+
+  // Artist upgrade requests
+  createArtistRequest(userId: string, reason: string): Promise<ArtistRequest>;
+  getArtistRequestByUser(userId: string): Promise<ArtistRequest | undefined>;
+  getPendingArtistRequests(): Promise<(ArtistRequest & { user: User })[]>;
+  getAllArtistRequests(status?: string): Promise<(ArtistRequest & { user: User })[]>;
+  updateArtistRequest(id: string, status: "approved" | "rejected", adminNote?: string): Promise<ArtistRequest | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -711,6 +719,58 @@ export class DatabaseStorage implements IStorage {
       .where(eq(moments.userId, userId))
       .orderBy(desc(moments.createdAt));
     return rows.map(r => ({ ...r.moment, user: r.user, song: r.song }));
+  }
+
+  // ── Artist upgrade requests ───────────────────────────────────────────────
+
+  async createArtistRequest(userId: string, reason: string): Promise<ArtistRequest> {
+    const [req] = await db.insert(artistRequests).values({ userId, reason }).returning();
+    return req;
+  }
+
+  async getArtistRequestByUser(userId: string): Promise<ArtistRequest | undefined> {
+    const [req] = await db
+      .select()
+      .from(artistRequests)
+      .where(eq(artistRequests.userId, userId))
+      .orderBy(desc(artistRequests.createdAt))
+      .limit(1);
+    return req;
+  }
+
+  async getPendingArtistRequests(): Promise<(ArtistRequest & { user: User })[]> {
+    const rows = await db
+      .select({ request: artistRequests, user: users })
+      .from(artistRequests)
+      .innerJoin(users, eq(artistRequests.userId, users.id))
+      .where(eq(artistRequests.status, "pending"))
+      .orderBy(artistRequests.createdAt);
+    return rows.map(r => ({ ...r.request, user: r.user }));
+  }
+
+  async getAllArtistRequests(status?: string): Promise<(ArtistRequest & { user: User })[]> {
+    const query = db
+      .select({ request: artistRequests, user: users })
+      .from(artistRequests)
+      .innerJoin(users, eq(artistRequests.userId, users.id))
+      .orderBy(desc(artistRequests.createdAt));
+    const rows = status
+      ? await query.where(eq(artistRequests.status, status))
+      : await query;
+    return rows.map(r => ({ ...r.request, user: r.user }));
+  }
+
+  async updateArtistRequest(
+    id: string,
+    status: "approved" | "rejected",
+    adminNote?: string
+  ): Promise<ArtistRequest | undefined> {
+    const [updated] = await db
+      .update(artistRequests)
+      .set({ status, adminNote: adminNote ?? null, reviewedAt: new Date() } as any)
+      .where(eq(artistRequests.id, id))
+      .returning();
+    return updated;
   }
 }
 

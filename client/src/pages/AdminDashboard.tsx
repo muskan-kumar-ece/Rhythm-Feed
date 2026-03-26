@@ -7,9 +7,9 @@ import {
 import {
   Users, Play, SkipForward, CheckCircle, Clock, TrendingUp, BarChart2, Shield,
   Check, X, ChevronDown, ChevronUp, Loader2, Pause, Music2, Upload,
-  PenLine, Filter, Square, CheckSquare, AlertCircle,
+  PenLine, Filter, Square, CheckSquare, AlertCircle, Mic2, UserCheck, UserX,
 } from "lucide-react";
-import { api, type ApiAdminStats, type ApiSong } from "@/lib/api";
+import { api, type ApiAdminStats, type ApiSong, type ApiArtistRequest } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -550,6 +550,46 @@ export default function AdminDashboard() {
     refetchInterval: 5 * 60_000,
   });
 
+  // ── Main view ─────────────────────────────────────────────────────────────
+  type MainView = "overview" | "moderation" | "requests";
+  const [mainView, setMainView] = useState<MainView>("overview");
+
+  // ── Artist requests ───────────────────────────────────────────────────────
+  const { data: artistRequests = [], refetch: refetchRequests } = useQuery<ApiArtistRequest[]>({
+    queryKey: ["admin-artist-requests"],
+    queryFn:  () => api.getAdminArtistRequests(),
+    enabled:  mainView === "requests",
+  });
+  const pendingRequests = artistRequests.filter(r => r.status === "pending");
+  const [requestRejectNote, setRequestRejectNote] = useState<Record<string, string>>({});
+  const [requestLoading,    setRequestLoading]    = useState<Record<string, boolean>>({});
+
+  const handleApproveRequest = async (id: string) => {
+    setRequestLoading(prev => ({ ...prev, [id]: true }));
+    try {
+      await api.approveArtistRequest(id);
+      toast({ title: "Artist request approved", description: "User has been promoted to artist." });
+      refetchRequests();
+    } catch {
+      toast({ title: "Failed to approve", variant: "destructive" });
+    } finally {
+      setRequestLoading(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const handleRejectRequest = async (id: string) => {
+    setRequestLoading(prev => ({ ...prev, [id]: true }));
+    try {
+      await api.rejectArtistRequest(id, requestRejectNote[id] || "");
+      toast({ title: "Request rejected" });
+      refetchRequests();
+    } catch {
+      toast({ title: "Failed to reject", variant: "destructive" });
+    } finally {
+      setRequestLoading(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
   // ── Moderation state ──────────────────────────────────────────────────────
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("pending");
   const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set());
@@ -643,17 +683,50 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Shield size={18} className="text-primary" />
-            <h1 className="text-xl font-display font-bold text-white">Platform Analytics</h1>
+            <h1 className="text-xl font-display font-bold text-white">Admin Panel</h1>
           </div>
           <Link href="/profile">
             <a className="text-xs text-white/40 hover:text-white/70 transition-colors">← Back</a>
           </Link>
         </div>
-        <p className="text-xs text-white/30 mt-1">Live platform metrics · Refreshes every 60s</p>
+
+        {/* Main view tabs */}
+        <div className="flex gap-1 mt-3">
+          {([
+            { id: "overview",    label: "Overview",   icon: BarChart2 },
+            { id: "moderation",  label: "Moderation", icon: Shield, badge: pendingCount },
+            { id: "requests",    label: "Artists",    icon: Mic2,   badge: pendingRequests.length },
+          ] as const).map(tab => {
+            const Icon = tab.icon;
+            const active = mainView === tab.id;
+            return (
+              <button
+                key={tab.id}
+                data-testid={`admin-tab-${tab.id}`}
+                onClick={() => setMainView(tab.id)}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all relative",
+                  active ? "bg-primary/20 text-primary border border-primary/30" : "text-white/40 hover:text-white/60 bg-white/5"
+                )}
+              >
+                <Icon size={12} />
+                {tab.label}
+                {"badge" in tab && (tab.badge ?? 0) > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-black text-[9px] font-bold flex items-center justify-center">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto pb-24 px-4 space-y-5">
+
+        {/* ── Overview ──────────────────────────────────────────────────────── */}
+        {mainView === "overview" && <>
 
         {/* Stat Cards */}
         {statsLoading ? (
@@ -745,8 +818,10 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* ── Moderation Queue ──────────────────────────────────────────────────── */}
-        <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+        </>} {/* end overview */}
+
+        {/* ── Moderation ────────────────────────────────────────────────────── */}
+        {mainView === "moderation" && <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden pt-2">
 
           {/* Section header */}
           <div className="flex items-center justify-between px-4 pt-4 pb-3">
@@ -890,7 +965,123 @@ export default function AdminDashboard() {
               ))
             )}
           </div>
-        </div>
+        </div>} {/* end moderation */}
+
+        {/* ── Artist Requests ───────────────────────────────────────────────── */}
+        {mainView === "requests" && (
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-white/40">
+                {artistRequests.length === 0 ? "No requests yet" :
+                 `${pendingRequests.length} pending · ${artistRequests.length} total`}
+              </p>
+              <button
+                onClick={() => refetchRequests()}
+                className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
+
+            {artistRequests.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
+                <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                  <Mic2 size={20} className="text-white/20" />
+                </div>
+                <p className="text-sm text-white/30 font-medium">No artist applications yet</p>
+                <p className="text-xs text-white/20">New requests will appear here</p>
+              </div>
+            ) : (
+              artistRequests.map(req => {
+                const isLoading = requestLoading[req.id];
+                const statusColor =
+                  req.status === "pending"  ? "text-amber-400 border-amber-500/30 bg-amber-500/10" :
+                  req.status === "approved" ? "text-green-400 border-green-500/30 bg-green-500/10" :
+                                              "text-red-400 border-red-500/30 bg-red-500/10";
+                return (
+                  <div
+                    key={req.id}
+                    data-testid={`request-card-${req.id}`}
+                    className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden"
+                  >
+                    {/* User info */}
+                    <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+                      <img
+                        src={req.user?.avatarUrl || `https://i.pravatar.cc/80?u=${req.userId}`}
+                        alt={req.user?.displayName}
+                        className="w-10 h-10 rounded-full object-cover border border-white/10"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">
+                          {req.user?.displayName || "Unknown"}
+                        </p>
+                        <p className="text-xs text-white/40">@{req.user?.username}</p>
+                      </div>
+                      <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border", statusColor)}>
+                        {req.status.toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* Reason */}
+                    {req.reason && (
+                      <div className="px-4 pb-3">
+                        <p className="text-xs text-white/50 italic leading-relaxed">"{req.reason}"</p>
+                      </div>
+                    )}
+
+                    {/* Admin note (on rejected) */}
+                    {req.status === "rejected" && req.adminNote && (
+                      <div className="mx-4 mb-3 p-2 rounded-xl bg-red-500/10 border border-red-500/20">
+                        <p className="text-[10px] text-red-400">Note: {req.adminNote}</p>
+                      </div>
+                    )}
+
+                    {/* Timestamp */}
+                    <div className="px-4 pb-3">
+                      <p className="text-[10px] text-white/20">
+                        Submitted {new Date(req.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {req.reviewedAt && ` · Reviewed ${new Date(req.reviewedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+                      </p>
+                    </div>
+
+                    {/* Approve / Reject actions (only for pending) */}
+                    {req.status === "pending" && (
+                      <div className="border-t border-white/5 px-4 py-3 space-y-2">
+                        <div className="flex gap-2">
+                          <button
+                            data-testid={`button-approve-request-${req.id}`}
+                            disabled={isLoading}
+                            onClick={() => handleApproveRequest(req.id)}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-500/15 border border-green-500/30 text-green-400 text-xs font-semibold hover:bg-green-500/25 transition-colors disabled:opacity-50"
+                          >
+                            {isLoading ? <Loader2 size={12} className="animate-spin" /> : <UserCheck size={13} />}
+                            Approve
+                          </button>
+                          <button
+                            data-testid={`button-reject-request-${req.id}`}
+                            disabled={isLoading}
+                            onClick={() => handleRejectRequest(req.id)}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/25 transition-colors disabled:opacity-50"
+                          >
+                            {isLoading ? <Loader2 size={12} className="animate-spin" /> : <UserX size={13} />}
+                            Reject
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Rejection note (optional)…"
+                          value={requestRejectNote[req.id] || ""}
+                          onChange={e => setRequestRejectNote(prev => ({ ...prev, [req.id]: e.target.value }))}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-white/20 outline-none focus:border-primary/40"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
 
       </div>
     </div>

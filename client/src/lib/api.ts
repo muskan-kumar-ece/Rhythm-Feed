@@ -113,6 +113,17 @@ export type ApiSongStats = {
   engagementScore: number;
 };
 
+export type ApiArtistRequest = {
+  id: string;
+  userId: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  adminNote: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  user?: ApiUser;
+};
+
 export type ApiUploadResult = {
   song: ApiSong;
   analysis: {
@@ -334,4 +345,31 @@ export const api = {
 
   // User moments
   getUserMoments: () => request<ApiMoment[]>("/api/user/moments"),
+
+  // Artist upgrade requests
+  submitArtistRequest: (reason: string) =>
+    request<{ request: ApiArtistRequest }>("/api/artist-request", {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  getMyArtistRequest: () =>
+    request<{ request: ApiArtistRequest | null }>("/api/artist-request/my"),
+
+  // Admin — artist requests
+  getAdminArtistRequests: (status?: string) =>
+    request<ApiArtistRequest[]>(`/api/admin/artist-requests${status ? `?status=${status}` : ""}`),
+  approveArtistRequest: (id: string) =>
+    request<{ success: boolean }>(`/api/admin/artist-requests/${id}/approve`, { method: "POST" }),
+  rejectArtistRequest: (id: string, adminNote?: string) =>
+    request<{ success: boolean }>(`/api/admin/artist-requests/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ adminNote: adminNote ?? "" }),
+    }),
+
+  // Admin — role management
+  updateUserRole: (userId: string, role: string) =>
+    request<{ success: boolean; role: string }>(`/api/admin/users/${userId}/role`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    }),
 };
