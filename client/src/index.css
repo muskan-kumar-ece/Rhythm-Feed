@@ -187,3 +187,147 @@
   @apply pt-12 pb-3 px-4 shrink-0 z-10;
   background: linear-gradient(to bottom, hsl(240 12% 3% / 1) 70%, transparent);
 }
+
+/* ─── Touch & tap performance ──────────────────────────────────────────────── */
+* { -webkit-tap-highlight-color: transparent; }
+button, a, [role="button"] { touch-action: manipulation; }
+
+/* ─── Ambient pulse (body glow) ──────────────────────────────────────────── */
+@keyframes ambient-pulse {
+  0%, 100% { opacity: 0.7; transform: translateX(-50%) scale(1); }
+  50%       { opacity: 1;   transform: translateX(-50%) scale(1.1); }
+}
+
+/* ─── Equalizer bars ──────────────────────────────────────────────────────── */
+@keyframes equalizer {
+  from { transform: scaleY(0.4); }
+  to   { transform: scaleY(1);   }
+}
+
+/* ─── Like/Heart pop ──────────────────────────────────────────────────────── */
+@keyframes like-pop {
+  0%   { transform: scale(1);    }
+  30%  { transform: scale(1.45); }
+  50%  { transform: scale(0.9);  }
+  70%  { transform: scale(1.2);  }
+  100% { transform: scale(1);    }
+}
+
+/* ─── Ripple-out ring ─────────────────────────────────────────────────────── */
+@keyframes ripple-out {
+  0%   { transform: scale(1);   opacity: 0.8; }
+  100% { transform: scale(2.4); opacity: 0;   }
+}
+
+/* ─── Particle burst ──────────────────────────────────────────────────────── */
+@keyframes particle-burst {
+  0%   { transform: translate(0, 0) scale(1);    opacity: 1; }
+  100% { transform: translate(var(--tx, 30px), var(--ty, -30px)) scale(0); opacity: 0; }
+}
+
+/* ─── Save stamp ──────────────────────────────────────────────────────────── */
+@keyframes save-stamp {
+  0%   { transform: scale(1);   }
+  20%  { transform: scale(1.5) rotate(-8deg); }
+  40%  { transform: scale(0.85) rotate(4deg);  }
+  60%  { transform: scale(1.15) rotate(-2deg); }
+  80%  { transform: scale(0.95) rotate(1deg);  }
+  100% { transform: scale(1);   }
+}
+
+/* ─── Float counter (+1) ──────────────────────────────────────────────────── */
+@keyframes float-counter {
+  0%   { transform: translateY(0) translateX(-50%);    opacity: 1; }
+  100% { transform: translateY(-24px) translateX(-50%); opacity: 0; }
+}
+
+/* ─── Follow glow flash ───────────────────────────────────────────────────── */
+@keyframes follow-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(168,85,247,0);    }
+  40%  { box-shadow: 0 0 0 10px rgba(168,85,247,0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(168,85,247,0);    }
+}
+
+/* ─── Share pop ───────────────────────────────────────────────────────────── */
+@keyframes share-pop {
+  0%   { transform: scale(1) rotate(0deg);     }
+  25%  { transform: scale(1.3) rotate(-10deg); }
+  50%  { transform: scale(0.9) rotate(5deg);   }
+  75%  { transform: scale(1.1) rotate(-3deg);  }
+  100% { transform: scale(1) rotate(0deg);     }
+}
+
+/* ─── Navigation glow pill ────────────────────────────────────────────────── */
+@keyframes nav-glow {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 1;   }
+}
+
+/* ─── Navigation tap ring ─────────────────────────────────────────────────── */
+@keyframes glow-ring {
+  0%   { transform: scale(1);   opacity: 0.9; }
+  100% { transform: scale(2.5); opacity: 0;   }
+}
+
+/* ─── Navigation icon bounce ──────────────────────────────────────────────── */
+@keyframes nav-bounce {
+  0%   { transform: translateY(0);   }
+  30%  { transform: translateY(-6px); }
+  60%  { transform: translateY(2px);  }
+  80%  { transform: translateY(-2px); }
+  100% { transform: translateY(0);   }
+}
+
+/* ─── Skeleton shimmer ────────────────────────────────────────────────────── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+/* ─── "For You" badge pulse ───────────────────────────────────────────────── */
+@keyframes for-you-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(168,85,247,0); opacity: 0.9; }
+  50%       { box-shadow: 0 0 10px 3px rgba(168,85,247,0.5); opacity: 1; }
+}
+
+/* ─── Neon glow text ──────────────────────────────────────────────────────── */
+.neon-primary {
+  text-shadow: 0 0 10px hsl(280 80% 60% / 0.7), 0 0 20px hsl(280 80% 60% / 0.4);
+}
+.neon-accent {
+  text-shadow: 0 0 10px hsl(330 80% 60% / 0.7), 0 0 20px hsl(330 80% 60% / 0.4);
+}
+
+/* ─── Song card info slide-in ─────────────────────────────────────────────── */
+@keyframes song-info-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.song-info-enter { animation: song-info-enter 0.45s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* ─── Slide-up animation ──────────────────────────────────────────────────── */
+.animate-slide-up { animation: slide-up 0.35s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* ─── Active cover glow ───────────────────────────────────────────────────── */
+@keyframes cover-glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px 4px rgba(168,85,247,0.25), 0 8px 32px rgba(0,0,0,0.8); }
+  50%       { box-shadow: 0 0 35px 8px rgba(168,85,247,0.4),  0 8px 32px rgba(0,0,0,0.8); }
+}
+.cover-glow-active { animation: cover-glow-pulse 2.5s ease-in-out infinite; }
+
+/* ─── Smooth image rendering ──────────────────────────────────────────────── */
+img { image-rendering: -webkit-optimize-contrast; }
+
+/* ─── Press/active scale ──────────────────────────────────────────────────── */
+.press-scale { transition: transform 80ms ease; }
+.press-scale:active { transform: scale(0.92); }

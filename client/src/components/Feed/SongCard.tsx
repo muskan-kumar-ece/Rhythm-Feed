@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X, UserCheck, UserPlus, Loader2 } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X, UserCheck, UserPlus, Loader2, Sparkles } from "lucide-react";
 import { ApiSong, ApiMoment, ApiUser, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
@@ -29,9 +29,11 @@ interface SongCardProps {
   onSongEnd?: () => void;
   /** Show the "Trending in Moments" badge on this card. */
   isTrendingInMoments?: boolean;
+  /** Show "For You" AI recommendation badge. */
+  isForYou?: boolean;
 }
 
-export default function SongCard({ song, isActive, shouldPreload = false, onSessionEvent, onSongEnd, isTrendingInMoments = false }: SongCardProps) {
+export default function SongCard({ song, isActive, shouldPreload = false, onSessionEvent, onSongEnd, isTrendingInMoments = false, isForYou = false }: SongCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -514,18 +516,33 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                 </div>
               </div>
 
-              {/* Trending in Moments badge + See Moments button */}
-              {isTrendingInMoments && (
-                <button
-                  data-testid="badge-trending-moments"
-                  onClick={(e) => { e.stopPropagation(); setShowMomentsPanel(true); setIsPlaying(false); }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/40 hover:bg-purple-500/30 transition-colors self-start"
-                >
-                  <TrendingUp size={11} className="text-purple-400" />
-                  <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wide">Trending in Moments</span>
-                  <MessageSquareQuote size={11} className="text-purple-400" />
-                </button>
-              )}
+              {/* Badges row */}
+              <div className="flex flex-wrap gap-2">
+                {/* "For You" AI badge */}
+                {isForYou && (
+                  <div
+                    data-testid="badge-for-you"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/20 border border-primary/40 self-start"
+                    style={{ animation: "for-you-pulse 2.5s ease-in-out infinite" }}
+                  >
+                    <Sparkles size={10} className="text-primary" />
+                    <span className="text-[10px] font-bold text-primary uppercase tracking-wide">For You</span>
+                  </div>
+                )}
+
+                {/* Trending in Moments badge */}
+                {isTrendingInMoments && (
+                  <button
+                    data-testid="badge-trending-moments"
+                    onClick={(e) => { e.stopPropagation(); setShowMomentsPanel(true); setIsPlaying(false); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/40 hover:bg-purple-500/30 transition-colors self-start"
+                  >
+                    <TrendingUp size={11} className="text-purple-400" />
+                    <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wide">Trending in Moments</span>
+                    <MessageSquareQuote size={11} className="text-purple-400" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -673,7 +690,13 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
             </button>
 
             {/* Rotating Record */}
-            <div className="mt-4 w-12 h-12 rounded-full border-2 border-white/20 overflow-hidden relative" onClick={(e) => e.stopPropagation()}>
+            <div
+              className={cn(
+                "mt-4 w-12 h-12 rounded-full border-2 overflow-hidden relative transition-all duration-500",
+                isActive && isPlaying ? "border-primary/60 cover-glow-active" : "border-white/20"
+              )}
+              onClick={(e) => e.stopPropagation()}
+            >
               <img 
                 src={song.coverUrl} 
                 alt="Record" 

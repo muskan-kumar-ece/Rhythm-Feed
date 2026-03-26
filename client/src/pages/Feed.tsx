@@ -187,23 +187,28 @@ export default function Feed() {
     setTimeout(() => setShowGreeting(false), 5000);
   }, [allSongs, onboardingPrefs]);
 
+  const scrollRafRef = useRef<number | null>(null);
   const handleScroll = useCallback(() => {
-    if (!containerRef.current) return;
-    const container = containerRef.current;
-    const index = Math.round(container.scrollTop / window.innerHeight);
+    if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      if (!containerRef.current) return;
+      const container = containerRef.current;
+      const index = Math.round(container.scrollTop / window.innerHeight);
 
-    if (index !== activeIndex && index >= 0 && index < feedItems.length) {
-      setActiveIndex(index);
-      if (showGreeting) setShowGreeting(false);
-    }
-
-    if (index >= feedItems.length - 2) {
-      if (selectedMood === "For You") {
-        setFeedItems(prev => [...prev, ...generateFeedSegment()]);
-      } else {
-        setFeedItems(prev => [...prev, ...generateMoodFeedSegment(selectedMood)]);
+      if (index !== activeIndex && index >= 0 && index < feedItems.length) {
+        setActiveIndex(index);
+        if (showGreeting) setShowGreeting(false);
       }
-    }
+
+      if (index >= feedItems.length - 2) {
+        if (selectedMood === "For You") {
+          setFeedItems(prev => [...prev, ...generateFeedSegment()]);
+        } else {
+          setFeedItems(prev => [...prev, ...generateMoodFeedSegment(selectedMood)]);
+        }
+      }
+    });
   }, [activeIndex, feedItems.length, selectedMood, showGreeting]);
 
   // ── Greeting text ─────────────────────────────────────────────────────────────
@@ -401,6 +406,7 @@ export default function Feed() {
               onSessionEvent={handleSessionEvent}
               onSongEnd={isDJMode && index === activeIndex ? handleSongEnd : undefined}
               isTrendingInMoments={momentTrendingIds.has(baseSongId)}
+              isForYou={selectedMood === "For You" && index < 3}
             />
           );
         })}

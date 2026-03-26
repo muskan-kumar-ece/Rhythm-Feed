@@ -333,7 +333,13 @@ function ModerationCard({ song: initialSong, selected, onSelect, onAction }: {
                                   "border-yellow-500/20 bg-yellow-500/5";
 
   return (
-    <div className={cn("rounded-2xl border overflow-hidden transition-all", statusColor, selected && "ring-2 ring-primary/40")}>
+    <div className={cn(
+      "rounded-2xl border overflow-hidden transition-all duration-200",
+      statusColor,
+      selected && "ring-2 ring-primary/50 shadow-[0_0_20px_rgba(168,85,247,0.2)]",
+      loading === "approve" && "ring-2 ring-green-500/50 shadow-[0_0_20px_rgba(34,197,94,0.25)]",
+      loading === "reject"  && "ring-2 ring-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.25)]",
+    )}>
       <div className="flex items-center gap-2 p-3">
         {/* Checkbox */}
         <button

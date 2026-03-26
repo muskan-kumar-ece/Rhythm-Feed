@@ -140,8 +140,23 @@ export default function Moments() {
 
         {/* ── Moments feed ─────────────────────────────────────────── */}
         {isLoading && (
-          <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="rounded-2xl border border-white/5 overflow-hidden" style={{ animationDelay: `${i * 0.08}s` }}>
+                <div className="skeleton h-52 w-full" />
+                <div className="p-3 space-y-2 bg-white/3">
+                  <div className="flex items-center gap-2">
+                    <div className="skeleton w-9 h-9 rounded-full shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="skeleton h-3 rounded w-1/3" />
+                      <div className="skeleton h-2.5 rounded w-1/2" />
+                    </div>
+                  </div>
+                  <div className="skeleton h-3 rounded w-3/4" />
+                  <div className="skeleton h-2.5 rounded w-1/2" />
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -156,10 +171,18 @@ export default function Moments() {
         ))}
 
         {!isLoading && displayMoments.length === 0 && (
-          <div className="text-center py-16 text-white/30">
-            <Quote size={32} className="mx-auto mb-3 opacity-30" />
-            <p className="text-sm">No moments yet.</p>
-            <p className="text-xs mt-1">Create one from the music feed!</p>
+          <div className="flex flex-col items-center text-center py-16 px-6 gap-4">
+            <div className="relative">
+              <div className="absolute inset-0 scale-150 rounded-full bg-primary/10 blur-2xl" />
+              <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative z-10">
+                <Flame size={32} className="text-primary/60" />
+              </div>
+            </div>
+            <div>
+              <p className="text-white font-bold text-lg mb-1">No moments yet</p>
+              <p className="text-white/40 text-sm">Be the first to drop one 🔥</p>
+              <p className="text-white/25 text-xs mt-2">Hit the share button on any song to create your moment</p>
+            </div>
           </div>
         )}
 
