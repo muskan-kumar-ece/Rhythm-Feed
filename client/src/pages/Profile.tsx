@@ -68,7 +68,6 @@ export default function Profile() {
     queryFn: () => api.getUserMoments(),
   });
 
-  const authUser = state.status === "authenticated" ? state.user : null;
   const user = {
     name:      authUser?.displayName || userProfile?.displayName || "Vibe Scroller",
     handle:    `@${authUser?.username || userProfile?.username || "vibescroller"}`,
