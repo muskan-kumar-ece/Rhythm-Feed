@@ -13,8 +13,8 @@ A mobile-style vertical music discovery web app (Resso/TikTok-inspired) with an 
 ```
 client/src/
   pages/         – Feed, Trending, Moments, Profile, ArtistPortal, AdminDashboard, Spotlight, Login, Signup
-  components/    – Feed/SongCard (main feed card), Navigation, AuthGuard
-  contexts/      – AuthContext (JWT cookie auth state)
+  components/    – Feed/SongCard (main feed card), Navigation, AuthGuard, RoleGuard
+  contexts/      – AuthContext (JWT cookie auth state, includes role)
   lib/           – api.ts, recommendation.ts, tracking.ts, dummyData.ts
 
 server/
@@ -31,7 +31,21 @@ shared/
 
 7 tables: `users`, `songs`, `moments`, `behavior_logs`, `song_likes`, `song_saves`, `moment_likes`
 
-Demo user: `demo-user-1` (username: `vibescroller`) — all user actions use this ID (no auth system yet).
+## Authentication & RBAC
+
+JWT stored in httpOnly cookie `rytham_token` (7-day expiry). Payload: `{ userId, username, role }`.
+
+**Roles** — stored in `users.role` column, defaults to `"user"`:
+- `user` — normal app access (feed, profile, spotlight)
+- `artist` — upload songs & spotlights (`/api/upload`, `/api/spotlights/upload`)
+- `admin` — full access including all `/api/admin/*` moderation endpoints + user role management (`PATCH /api/admin/users/:id/role`)
+
+**Frontend route guards**: `RoleGuard` component in `App.tsx` wraps `/artist/*` (artist + admin) and `/admin` (admin only) routes. Navigation shows role-appropriate tabs.
+
+**Demo accounts** (password `demo1234`):
+- `vibescroller` → admin
+- `alexvibes`, `sarahcode`, `jakefitness` → artist
+- All new signups → user (default)
 
 ## Recommendation / Ranking System
 

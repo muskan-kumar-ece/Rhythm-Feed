@@ -2,7 +2,7 @@
  * Authentication helpers — JWT-based with httpOnly cookie transport.
  *
  *  Cookie name : rytham_token
- *  Payload     : { userId, username }
+ *  Payload     : { userId, username, role }
  *  Secret      : JWT_SECRET env var (falls back to a hard-coded dev secret)
  */
 import type { Request, Response, NextFunction } from "express";
@@ -23,7 +23,7 @@ const COOKIE_OPTS = {
 
 // ─── JWT helpers ─────────────────────────────────────────────────────────────
 
-export type JwtPayload = { userId: string; username: string };
+export type JwtPayload = { userId: string; username: string; role: string };
 
 export function signToken(payload: JwtPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
@@ -76,4 +76,29 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
   (req as any).user = payload;
   next();
+}
+
+/**
+ * Returns middleware that allows only the specified roles.
+ * Also sets req.user so downstream handlers don't need to re-verify.
+ *
+ * Usage:
+ *   app.post("/api/upload", requireRole("artist", "admin"), handler)
+ *   app.use("/api/admin", requireRole("admin"))
+ */
+export function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const payload = getTokenFromRequest(req);
+    if (!payload) {
+      res.status(401).json({ message: "Unauthorised — please log in" });
+      return;
+    }
+    const userRole = (payload as JwtPayload).role ?? "user";
+    if (!roles.includes(userRole)) {
+      res.status(403).json({ message: `Forbidden — requires role: ${roles.join(" or ")}` });
+      return;
+    }
+    (req as any).user = payload;
+    next();
+  };
 }

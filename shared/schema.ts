@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   followers: integer("followers").notNull().default(0),
   following: integer("following").notNull().default(0),
   isArtist: boolean("is_artist").notNull().default(false),
+  role: text("role").notNull().default("user"),   // "user" | "artist" | "admin"
   passwordHash: text("password_hash"),  // null = demo/legacy accounts
   email: text("email").unique(),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),

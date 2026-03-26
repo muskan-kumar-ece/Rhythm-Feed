@@ -111,6 +111,9 @@ export interface IStorage {
 
   // User moments
   getUserMoments(userId: string): Promise<(Moment & { user: User; song: Song })[]>;
+
+  // Role management
+  updateUserRole(id: string, role: string): Promise<User | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -138,6 +141,14 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(users)
       .set({ ...(data.passwordHash !== undefined && { passwordHash: data.passwordHash }),
              ...(data.email      !== undefined && { email:        data.email })        })
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateUserRole(id: string, role: string): Promise<User | undefined> {
+    const [updated] = await db.update(users)
+      .set({ role } as any)
       .where(eq(users.id, id))
       .returning();
     return updated;

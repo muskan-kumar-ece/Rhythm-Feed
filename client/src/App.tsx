@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
+import RoleGuard from "@/components/RoleGuard";
 import NotFound from "@/pages/not-found";
 import Feed from "@/pages/Feed";
 import ArtistPortal from "@/pages/ArtistPortal";
@@ -27,17 +28,33 @@ function AppRoutes() {
   return (
     <main className="flex-1 w-full max-w-md mx-auto relative bg-black shadow-2xl overflow-hidden shadow-white/5 border-x border-white/5">
       <Switch>
-        <Route path="/login"            component={Login} />
-        <Route path="/signup"           component={Signup} />
-        <Route path="/"                 component={Feed} />
-        <Route path="/search"           component={Search} />
-        <Route path="/trending"         component={Trending} />
-        <Route path="/artist/:tab?"     component={ArtistPortal} />
-        <Route path="/moments"          component={Moments} />
-        <Route path="/profile"          component={Profile} />
-        <Route path="/spotlight"        component={Spotlight} />
-        <Route path="/admin"            component={AdminDashboard} />
-        <Route                          component={NotFound} />
+        {/* Public auth routes */}
+        <Route path="/login"  component={Login} />
+        <Route path="/signup" component={Signup} />
+
+        {/* Public app routes — any authenticated user */}
+        <Route path="/"        component={Feed} />
+        <Route path="/search"  component={Search} />
+        <Route path="/trending" component={Trending} />
+        <Route path="/moments" component={Moments} />
+        <Route path="/profile" component={Profile} />
+        <Route path="/spotlight" component={Spotlight} />
+
+        {/* Artist-only routes */}
+        <Route path="/artist/:tab?">
+          <RoleGuard roles={["artist", "admin"]}>
+            <ArtistPortal />
+          </RoleGuard>
+        </Route>
+
+        {/* Admin-only routes */}
+        <Route path="/admin">
+          <RoleGuard roles={["admin"]}>
+            <AdminDashboard />
+          </RoleGuard>
+        </Route>
+
+        <Route component={NotFound} />
       </Switch>
 
       {!isAuthRoute && <Navigation />}

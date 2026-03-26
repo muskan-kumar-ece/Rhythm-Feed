@@ -15,7 +15,7 @@ import { analyzeTrack } from "./aiAnalysis";
 import {
   hashPassword, comparePassword,
   setAuthCookie, clearAuthCookie, getTokenFromRequest,
-  attachUser,
+  attachUser, requireRole,
 } from "./auth";
 import { z } from "zod";
 import multer from "multer";
@@ -124,7 +124,8 @@ export async function registerRoutes(
       email:       emailVal ?? null,
     } as any);
 
-    setAuthCookie(res, { userId: user.id, username: user.username });
+    const role = (user as any).role ?? "user";
+    setAuthCookie(res, { userId: user.id, username: user.username, role });
     return res.status(201).json({
       id:          user.id,
       username:    user.username,
@@ -133,6 +134,7 @@ export async function registerRoutes(
       bio:         user.bio,
       email:       (user as any).email ?? null,
       isArtist:    user.isArtist,
+      role,
     });
   });
 
@@ -153,7 +155,8 @@ export async function registerRoutes(
       if (!ok) return res.status(401).json({ message: "Invalid username or password" });
     }
 
-    setAuthCookie(res, { userId: user.id, username: user.username });
+    const role = (user as any).role ?? "user";
+    setAuthCookie(res, { userId: user.id, username: user.username, role });
     return res.json({
       id:          user.id,
       username:    user.username,
@@ -162,6 +165,7 @@ export async function registerRoutes(
       bio:         user.bio,
       email:       (user as any).email ?? null,
       isArtist:    user.isArtist,
+      role,
     });
   });
 
@@ -181,6 +185,7 @@ export async function registerRoutes(
       bio:         user.bio,
       email:       (user as any).email ?? null,
       isArtist:    user.isArtist,
+      role:        (user as any).role ?? "user",
     });
   });
 
@@ -226,8 +231,8 @@ export async function registerRoutes(
     const newHash = await hashPassword(newPassword);
     await storage.updateUserAuth(payload.userId, { passwordHash: newHash });
 
-    // Re-issue a fresh token so the session stays alive
-    setAuthCookie(res, { userId: user.id, username: user.username });
+    // Re-issue a fresh token so the session stays alive (preserve role)
+    setAuthCookie(res, { userId: user.id, username: user.username, role: (user as any).role ?? "user" });
     return res.json({ success: true });
   });
 
@@ -443,6 +448,7 @@ export async function registerRoutes(
   // ── Upload — multipart audio + cover ─────────────────────────────────────
   app.post(
     "/api/upload",
+    requireRole("artist", "admin"),
     upload.fields([
       { name: "audio", maxCount: 1 },
       { name: "cover", maxCount: 1 },
@@ -497,7 +503,7 @@ export async function registerRoutes(
         aiTags: analysis.aiTags,
         distributionScore: NEW_SONG_SCORE,
         distributionPhase: NEW_SONG_PHASE,
-        uploadedBy: DEMO_USER_ID,
+        uploadedBy: userId(req),
         features: {
           tempo:  analysis.tempo,
           energy: analysis.energy,
@@ -515,7 +521,23 @@ export async function registerRoutes(
     }
   );
 
-  // ── Moderation — admin endpoints ──────────────────────────────────────────
+  // ── Moderation — admin endpoints (admin-only) ─────────────────────────────
+  // Single middleware guard for every route under /api/admin
+  app.use("/api/admin", requireRole("admin"));
+
+  // PATCH /api/admin/users/:id/role — promote / demote any user
+  app.patch("/api/admin/users/:id/role", async (req: Request, res: Response) => {
+    const { role } = req.body;
+    if (!["user", "artist", "admin"].includes(role)) {
+      return res.status(400).json({ message: "role must be user, artist, or admin" });
+    }
+    try {
+      await storage.updateUserRole(req.params.id, role);
+      return res.json({ success: true, role });
+    } catch {
+      return res.status(404).json({ message: "User not found" });
+    }
+  });
 
   app.get("/api/admin/pending", async (_req: Request, res: Response) => {
     const pending = await storage.getPendingSongs();
@@ -952,9 +974,10 @@ export async function registerRoutes(
     res.json({ success: true, liked: false });
   });
 
-  // Upload spotlight (audio or video clip)
+  // Upload spotlight (audio or video clip) — artist or admin only
   app.post(
     "/api/spotlights/upload",
+    requireRole("artist", "admin"),
     upload.fields([
       { name: "media", maxCount: 1 },
       { name: "cover", maxCount: 1 },
@@ -992,7 +1015,7 @@ export async function registerRoutes(
         durationSeconds: parseInt(durationSeconds) || 0,
         tags:            parsedTags,
         prompt:          prompt ?? "",
-        uploadedBy:      DEMO_USER_ID,
+        uploadedBy:      userId(req),
         status:          "pending",
       });
 

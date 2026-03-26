@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 
+export type UserRole = "user" | "artist" | "admin";
+
 export type AuthUser = {
   id: string;
   username: string;
@@ -8,6 +10,7 @@ export type AuthUser = {
   bio: string;
   email: string | null;
   isArtist: boolean;
+  role: UserRole;
 };
 
 type AuthState =
