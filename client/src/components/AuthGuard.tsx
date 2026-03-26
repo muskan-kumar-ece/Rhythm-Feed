@@ -16,7 +16,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       setLocation("/login");
     }
     if (state.status === "authenticated" && isPublic) {
-      setLocation("/");
+      const role = state.user.role;
+      if (role === "admin") setLocation("/admin");
+      else if (role === "artist") setLocation("/artist/dashboard");
+      else setLocation("/");
     }
   }, [state.status, location, setLocation]);
 

@@ -36,16 +36,19 @@ shared/
 JWT stored in httpOnly cookie `rytham_token` (7-day expiry). Payload: `{ userId, username, role }`.
 
 **Roles** — stored in `users.role` column, defaults to `"user"`:
-- `user` — normal app access (feed, profile, spotlight)
-- `artist` — upload songs & spotlights (`/api/upload`, `/api/spotlights/upload`)
-- `admin` — full access including all `/api/admin/*` moderation endpoints + user role management (`PATCH /api/admin/users/:id/role`)
+- `user` — normal app access (feed, profile, spotlight) → redirects to `/`
+- `artist` — upload songs & spotlights → redirects to `/artist/dashboard` after login
+- `admin` — full moderation access → redirects to `/admin` after login
+
+**Role-based redirect**: `Login.tsx` and `AuthGuard.tsx` both redirect based on role after auth.
+`AuthContext.login()` and `signup()` return the user object so callers can act on role immediately.
+
+**Demo accounts** (all use password `demo1234`, no passwordHash in DB):
+- `vibescroller` → role: `user`
+- `demoartist` → role: `artist`
+- `demoadmin` → role: `admin`
 
 **Frontend route guards**: `RoleGuard` component in `App.tsx` wraps `/artist/*` (artist + admin) and `/admin` (admin only) routes. Navigation shows role-appropriate tabs.
-
-**Demo accounts** (password `demo1234`):
-- `vibescroller` → admin
-- `alexvibes`, `sarahcode`, `jakefitness` → artist
-- All new signups → user (default)
 
 ## Recommendation / Ranking System
 

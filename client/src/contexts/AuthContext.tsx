@@ -20,8 +20,8 @@ type AuthState =
 
 type AuthCtx = {
   state: AuthState;
-  login:   (username: string, password: string) => Promise<void>;
-  signup:  (username: string, email: string, password: string, displayName: string) => Promise<void>;
+  login:   (username: string, password: string) => Promise<AuthUser>;
+  signup:  (username: string, email: string, password: string, displayName: string) => Promise<AuthUser>;
   logout:  () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -59,22 +59,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string): Promise<AuthUser> => {
     const user = await apiFetch("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     });
     setState({ status: "authenticated", user });
+    return user as AuthUser;
   }, []);
 
   const signup = useCallback(async (
     username: string, email: string, password: string, displayName: string
-  ) => {
+  ): Promise<AuthUser> => {
     const user = await apiFetch("/api/auth/signup", {
       method: "POST",
       body: JSON.stringify({ username, email, password, displayName }),
     });
     setState({ status: "authenticated", user });
+    return user as AuthUser;
   }, []);
 
   const logout = useCallback(async () => {

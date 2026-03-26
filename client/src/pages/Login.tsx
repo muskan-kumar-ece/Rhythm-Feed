@@ -30,8 +30,10 @@ export default function Login() {
     setError(null);
     setLoading(true);
     try {
-      await login(username.trim().toLowerCase(), password);
-      setLocation("/");
+      const user = await login(username.trim().toLowerCase(), password);
+      if (user.role === "admin") setLocation("/admin");
+      else if (user.role === "artist") setLocation("/artist/dashboard");
+      else setLocation("/");
     } catch (e: any) {
       setError(e.message ?? "Login failed. Please check your credentials.");
     } finally {
@@ -131,11 +133,24 @@ export default function Login() {
         </div>
 
         {/* Demo hint */}
-        <div className="mt-6 p-3 rounded-xl bg-white/4 border border-white/8 text-center">
-          <p className="text-white/30 text-xs">
-            <span className="text-white/50 font-medium">Demo account:</span>{" "}
-            username <span className="text-white/50">vibescroller</span> · password <span className="text-white/50">demo1234</span>
-          </p>
+        <div className="mt-6 p-3 rounded-xl bg-white/4 border border-white/8 space-y-1.5">
+          <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold text-center mb-2">Demo Accounts · password: demo1234</p>
+          {[
+            { label: "Listener", username: "vibescroller", color: "text-blue-400" },
+            { label: "Artist", username: "demoartist", color: "text-primary" },
+            { label: "Admin", username: "demoadmin", color: "text-amber-400" },
+          ].map(({ label, username, color }) => (
+            <button
+              key={username}
+              type="button"
+              data-testid={`demo-login-${label.toLowerCase()}`}
+              onClick={() => { setUsername(username); setPassword("demo1234"); setError(null); }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+            >
+              <span className={`text-[11px] font-semibold ${color}`}>{label}</span>
+              <span className="text-white/40 text-[11px] font-mono">{username}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>

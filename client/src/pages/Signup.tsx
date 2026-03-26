@@ -91,13 +91,15 @@ export default function Signup() {
     setGlobalError(null);
     setLoading(true);
     try {
-      await signup(
+      const user = await signup(
         username.trim().toLowerCase(),
         email.trim().toLowerCase(),
         password,
         displayName.trim(),
       );
-      setLocation("/");
+      if (user.role === "admin") setLocation("/admin");
+      else if (user.role === "artist") setLocation("/artist/dashboard");
+      else setLocation("/");
     } catch (e: any) {
       setGlobalError(e.message ?? "Sign up failed. Please try again.");
     } finally {
