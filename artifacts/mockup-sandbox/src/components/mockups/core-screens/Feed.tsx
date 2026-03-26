@@ -7,7 +7,7 @@ export function Feed() {
   const [saved, setSaved] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#08080e] flex flex-col relative overflow-hidden font-['Inter']">
+    <div className="h-screen bg-[#08080e] flex flex-col relative overflow-hidden font-['Inter']">
       {/* Full-screen album cover (blurred bg) */}
       <div
         className="absolute inset-0 z-0"

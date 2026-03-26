@@ -28,15 +28,15 @@ export function Moments() {
   const [liked, setLiked] = useState<Set<number>>(new Set());
 
   return (
-    <div className="min-h-screen bg-[#08080e] flex flex-col font-['Inter']">
+    <div className="h-screen bg-[#08080e] flex flex-col font-['Inter'] overflow-hidden">
       {/* Status bar */}
-      <div className="flex justify-between items-center text-white/40 text-[11px] px-5 pt-3 pb-1">
+      <div className="shrink-0 flex justify-between items-center text-white/40 text-[11px] px-5 pt-3 pb-1">
         <span>9:41</span>
         <div className="w-4 h-2 border border-white/40 rounded-sm"><div className="h-full w-3/4 bg-white/40 rounded-sm" /></div>
       </div>
 
       {/* Header */}
-      <div className="px-5 pt-3 pb-3 sticky top-0 z-30 bg-[#08080e]/95 backdrop-blur-xl border-b border-white/5">
+      <div className="shrink-0 px-5 pt-2 pb-3 bg-[#08080e] border-b border-white/5">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight">Moments</h1>
@@ -72,7 +72,7 @@ export function Moments() {
       </div>
 
       {/* Moments list */}
-      <div className="flex-1 overflow-y-auto px-4 space-y-4 pb-24">
+      <div className="flex-1 overflow-y-auto px-4 space-y-4" style={{ paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))" }}>
         {MOMENTS.map((m, i) => (
           <div key={m.id} className="rounded-2xl border border-white/8 overflow-hidden bg-white/3">
             {/* Lyric card */}
@@ -121,13 +121,13 @@ export function Moments() {
         ))}
       </div>
 
-      {/* FAB */}
-      <button className="absolute bottom-20 right-4 z-30 w-14 h-14 rounded-full bg-[#a855f7] shadow-[0_0_20px_rgba(168,85,247,0.5)] flex items-center justify-center">
-        <Plus size={24} className="text-white" />
-      </button>
-
       {/* Bottom nav */}
-      <div className="flex items-center justify-around border-t border-white/5 px-3 py-2 bg-black/80 backdrop-blur-xl">
+      <nav className="shrink-0 relative flex items-center justify-around border-t border-white/5 px-3 bg-black/80 backdrop-blur-xl"
+        style={{ paddingTop: "8px", paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))" }}>
+        {/* FAB — sits above nav, right-aligned */}
+        <button className="absolute -top-8 right-4 w-14 h-14 rounded-full bg-[#a855f7] shadow-[0_0_20px_rgba(168,85,247,0.5)] flex items-center justify-center z-10">
+          <Plus size={24} className="text-white" />
+        </button>
         {[
           { icon: <Home size={22} />, label: "Home" },
           { icon: <Music2 size={22} />, label: "Moments", active: true },
@@ -140,12 +140,7 @@ export function Moments() {
             <span className="text-[9px] font-semibold">{n.label}</span>
           </button>
         ))}
-      </div>
-
-      {/* UX annotation */}
-      <div className="absolute bottom-0 left-0 right-0 z-50 opacity-0 hover:opacity-100 transition-opacity mx-3 mb-16 bg-[#08080e]/95 border border-[#a855f7]/20 rounded-xl p-2.5 text-[9px] text-white/50">
-        <span className="text-[#a855f7] font-bold">UX:</span> Gradient lyric cards = visually distinct. Discover strip = feed-to-moments bridge. Trending badge = FOMO driver. FAB = 1-tap create. Play Song button = direct conversion from social → music.
-      </div>
+      </nav>
     </div>
   );
 }

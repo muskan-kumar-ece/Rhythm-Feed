@@ -21,21 +21,21 @@ export function Profile() {
   const [following, setFollowing] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#08080e] flex flex-col font-['Inter']">
-      <div className="flex justify-between items-center text-white/40 text-[11px] px-5 pt-3 pb-1">
+    <div className="h-screen bg-[#08080e] flex flex-col font-['Inter'] overflow-hidden">
+      <div className="shrink-0 flex justify-between items-center text-white/40 text-[11px] px-5 pt-3 pb-1">
         <span>9:41</span>
         <div className="w-4 h-2 border border-white/40 rounded-sm"><div className="h-full w-3/4 bg-white/40 rounded-sm" /></div>
       </div>
 
       {/* Header actions */}
-      <div className="flex items-center justify-between px-5 pb-3">
+      <div className="shrink-0 flex items-center justify-between px-5 pb-3">
         <button className="text-white/50"><MoreHorizontal size={20} /></button>
         <p className="text-white font-bold text-base">Profile</p>
         <button className="text-white/50"><Share2 size={18} /></button>
       </div>
 
       {/* Profile hero */}
-      <div className="relative">
+      <div className="shrink-0 relative">
         {/* Cover art strip */}
         <div className="h-24 bg-gradient-to-r from-[#a855f7]/40 to-[#ec4899]/30 relative overflow-hidden">
           <div className="absolute inset-0" style={{background:"radial-gradient(ellipse at 20% 50%, #a855f7 0%, transparent 60%), radial-gradient(ellipse at 80% 50%, #ec4899 0%, transparent 60%)", opacity:0.4}} />
@@ -94,7 +94,7 @@ export function Profile() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-white/5 px-5">
+      <div className="shrink-0 flex gap-0 border-b border-white/5 px-5">
         {[
           {id:"moments",label:"Moments"},
           {id:"songs",label:"Tracks"},
@@ -113,7 +113,7 @@ export function Profile() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto pb-24">
+      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))" }}>
 
         {tab === "moments" && (
           <div className="grid grid-cols-3 gap-0.5 p-0.5">
@@ -176,7 +176,8 @@ export function Profile() {
       </div>
 
       {/* Bottom nav */}
-      <div className="flex items-center justify-around border-t border-white/5 px-3 py-2 bg-black/80 backdrop-blur-xl">
+      <nav className="shrink-0 flex items-center justify-around border-t border-white/5 px-3 bg-black/80 backdrop-blur-xl"
+        style={{ paddingTop: "8px", paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))" }}>
         {[
           { icon: <Home size={22} />, label: "Home" },
           { icon: <Music2 size={22} />, label: "Moments" },
@@ -189,12 +190,7 @@ export function Profile() {
             <span className="text-[9px] font-semibold">{n.label}</span>
           </button>
         ))}
-      </div>
-
-      {/* UX annotation */}
-      <div className="mx-4 mb-3 bg-[#a855f7]/5 border border-[#a855f7]/20 rounded-xl p-2.5 text-[9px] text-white/40 leading-relaxed">
-        <span className="text-[#a855f7] font-bold">UX:</span> Cover strip + large avatar = visual identity anchor. Stats row = social proof at a glance. Moments grid = Instagram-style discovery. Song list with play count = credibility. Tabs = progressive disclosure. Follow button CTA color changes on state.
-      </div>
+      </nav>
     </div>
   );
 }

@@ -13,43 +13,44 @@ export function Settings() {
     darkMode: true,
   });
   const toggle = (k: keyof typeof prefs) => setPrefs(p => ({...p, [k]: !p[k]}));
-
   const [tab, setTab] = useState<"account"|"playback"|"notifications"|"security">("account");
 
   return (
-    <div className="min-h-screen bg-[#08080e] flex flex-col font-['Inter']">
-      <div className="flex justify-between items-center text-white/40 text-[11px] px-5 pt-3 pb-1">
-        <span>9:41</span>
-        <div className="w-4 h-2 border border-white/40 rounded-sm"><div className="h-full w-3/4 bg-white/40 rounded-sm" /></div>
+    <div className="h-screen bg-[#08080e] flex flex-col font-['Inter'] overflow-hidden">
+
+      {/* ── Static header ── */}
+      <div className="shrink-0">
+        <div className="flex justify-between items-center text-white/40 text-[11px] px-5 pt-3 pb-1">
+          <span>9:41</span>
+          <div className="w-4 h-2 border border-white/40 rounded-sm"><div className="h-full w-3/4 bg-white/40 rounded-sm" /></div>
+        </div>
+        <div className="px-5 pt-2 pb-3 border-b border-white/5">
+          <h1 className="text-2xl font-bold text-white tracking-tight">Settings</h1>
+          <p className="text-white/30 text-xs mt-0.5">Manage your account & preferences</p>
+        </div>
+        {/* Tab nav */}
+        <div className="flex gap-1.5 px-4 py-3 overflow-x-auto no-scrollbar border-b border-white/5">
+          {[
+            {id:"account",icon:<User size={13}/>,label:"Account"},
+            {id:"playback",icon:<Play size={13}/>,label:"Playback"},
+            {id:"notifications",icon:<Bell size={13}/>,label:"Alerts"},
+            {id:"security",icon:<Shield size={13}/>,label:"Security"},
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id as any)}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-semibold transition-all ${
+                tab === t.id ? "bg-[#a855f7]/20 text-[#a855f7] border border-[#a855f7]/30" : "text-white/40 bg-white/5"
+              }`}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Header */}
-      <div className="px-5 pt-2 pb-4 border-b border-white/5">
-        <h1 className="text-2xl font-bold text-white tracking-tight">Settings</h1>
-        <p className="text-white/30 text-xs mt-0.5">Manage your account & preferences</p>
-      </div>
-
-      {/* Tab nav — horizontal scroll */}
-      <div className="flex gap-1.5 px-4 py-3 overflow-x-auto no-scrollbar border-b border-white/5">
-        {[
-          {id:"account",icon:<User size={13}/>,label:"Account"},
-          {id:"playback",icon:<Play size={13}/>,label:"Playback"},
-          {id:"notifications",icon:<Bell size={13}/>,label:"Alerts"},
-          {id:"security",icon:<Shield size={13}/>,label:"Security"},
-        ].map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id as any)}
-            className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-semibold transition-all ${
-              tab === t.id ? "bg-[#a855f7]/20 text-[#a855f7] border border-[#a855f7]/30" : "text-white/40 bg-white/5"
-            }`}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1 overflow-y-auto pb-24 px-4 pt-3 space-y-4">
+      {/* ── Scrollable content ── */}
+      <div className="flex-1 overflow-y-auto px-4 pt-3 space-y-4" style={{ paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))" }}>
 
         {tab === "account" && (
           <>
@@ -61,16 +62,24 @@ export function Settings() {
                 <p className="text-white/40 text-xs truncate">alex@example.com</p>
                 <p className="text-[#a855f7] text-[10px] font-semibold mt-0.5">Free Plan · <span className="underline">Upgrade →</span></p>
               </div>
-              <button className="text-white/40">
-                <ChevronRight size={18} />
-              </button>
+              <ChevronRight size={18} className="text-white/40" />
             </div>
 
-            {/* Edit fields */}
+            {/* Role switch */}
+            <div className="bg-[#a855f7]/5 border border-[#a855f7]/20 rounded-2xl p-4">
+              <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-3">Account Role</p>
+              <div className="flex gap-2">
+                {["Listener", "Artist"].map(r => (
+                  <button key={r} className={`flex-1 py-3 rounded-xl text-sm font-bold border transition-all ${r === "Listener" ? "bg-[#a855f7]/20 border-[#a855f7]/50 text-[#a855f7]" : "bg-white/5 border-white/10 text-white/40"}`}>
+                    {r === "Listener" ? "👤" : "🎤"} {r}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-white/30 mt-2 leading-relaxed">Switch to Artist to upload tracks and access the creator portal</p>
+            </div>
+
             <Section title="Profile">
-              {[{label:"Username",v:"@alexj"},
-                {label:"Display Name",v:"Alex Johnson"},
-                {label:"Bio",v:"Music is life 🎵"}].map(f => (
+              {[{label:"Username",v:"@alexj"},{label:"Display Name",v:"Alex Johnson"},{label:"Bio",v:"Music is life 🎵"}].map(f => (
                 <div key={f.label} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
                   <div>
                     <p className="text-xs text-white/40 uppercase tracking-wider font-semibold mb-0.5">{f.label}</p>
@@ -98,7 +107,7 @@ export function Settings() {
           <>
             <Section title="Audio">
               <ToggleRow icon={<Play size={15} className="text-[#a855f7]"/>} label="Autoplay" sub="Continue playing after a song ends" val={prefs.autoplay} onToggle={() => toggle("autoplay")} />
-              <ToggleRow icon={<Volume2 size={15} className="text-blue-400"/>} label="Hi-Fi Quality" sub="320kbps audio (uses more data)" val={prefs.hifi} onToggle={() => toggle("hifi")} />
+              <ToggleRow icon={<Volume2 size={15} className="text-blue-400"/>} label="Hi-Fi Quality" sub="320kbps (uses more data)" val={prefs.hifi} onToggle={() => toggle("hifi")} />
               <ToggleRow icon={<Volume2 size={15} className="text-green-400"/>} label="Volume Normalize" sub="Consistent volume across tracks" val={prefs.normalize} onToggle={() => toggle("normalize")} />
             </Section>
             <Section title="Data">
@@ -132,8 +141,9 @@ export function Settings() {
         )}
       </div>
 
-      {/* Bottom nav */}
-      <div className="flex items-center justify-around border-t border-white/5 px-3 py-2 bg-black/80 backdrop-blur-xl">
+      {/* ── Bottom nav — always visible ── */}
+      <nav className="shrink-0 flex items-center justify-around border-t border-white/5 px-3 bg-black/80 backdrop-blur-xl"
+        style={{ paddingTop: "8px", paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))" }}>
         {[
           { icon: <Home size={22} />, label: "Home" },
           { icon: <Music2 size={22} />, label: "Moments" },
@@ -141,12 +151,12 @@ export function Settings() {
           { icon: <User size={22} />, label: "Profile" },
           { icon: <Shield size={22} />, label: "Settings", active: true },
         ].map(n => (
-          <button key={n.label} className={`flex flex-col items-center gap-0.5 py-1 px-2 ${n.active ? "text-[#a855f7]" : "text-white/35"}`}>
+          <button key={n.label} className={`flex flex-col items-center gap-0.5 py-1 px-2 ${(n as any).active ? "text-[#a855f7]" : "text-white/35"}`}>
             {n.icon}
             <span className="text-[9px] font-semibold">{n.label}</span>
           </button>
         ))}
-      </div>
+      </nav>
     </div>
   );
 }
@@ -155,9 +165,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <div>
       <p className="text-[10px] text-white/30 uppercase tracking-wider font-semibold mb-2 px-1">{title}</p>
-      <div className="bg-white/5 border border-white/8 rounded-2xl px-4 py-1">
-        {children}
-      </div>
+      <div className="bg-white/5 border border-white/8 rounded-2xl px-4 py-1">{children}</div>
     </div>
   );
 }
@@ -172,9 +180,9 @@ function ToggleRow({ icon, label, sub, val, onToggle }: { icon: React.ReactNode;
       </div>
       <button
         onClick={onToggle}
-        className={`w-11 h-6 rounded-full transition-all shrink-0 ${val ? "bg-[#a855f7] shadow-[0_0_10px_rgba(168,85,247,0.4)]" : "bg-white/15"}`}
+        className={`w-11 h-6 rounded-full transition-all shrink-0 relative ${val ? "bg-[#a855f7] shadow-[0_0_10px_rgba(168,85,247,0.4)]" : "bg-white/15"}`}
       >
-        <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-all mx-1 ${val ? "translate-x-5" : "translate-x-0"}`} />
+        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${val ? "right-1" : "left-1"}`} />
       </button>
     </div>
   );
