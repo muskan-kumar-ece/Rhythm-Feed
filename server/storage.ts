@@ -19,7 +19,9 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUserAuth(id: string, data: { passwordHash?: string; email?: string }): Promise<User | undefined>;
 
   // Songs
   getSongs(): Promise<Song[]>;
@@ -125,6 +127,20 @@ export class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async updateUserAuth(id: string, data: { passwordHash?: string; email?: string }): Promise<User | undefined> {
+    const [updated] = await db.update(users)
+      .set({ ...(data.passwordHash !== undefined && { passwordHash: data.passwordHash }),
+             ...(data.email      !== undefined && { email:        data.email })        })
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
   }
 
   async getSongs(): Promise<Song[]> {

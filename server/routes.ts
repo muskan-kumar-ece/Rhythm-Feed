@@ -12,14 +12,24 @@ import {
   NEW_SONG_PHASE,
 } from "./discovery";
 import { analyzeTrack } from "./aiAnalysis";
+import {
+  hashPassword, comparePassword,
+  setAuthCookie, clearAuthCookie, getTokenFromRequest,
+  attachUser,
+} from "./auth";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
 
-// For this app we use a single demo user id for all actions (no auth system yet)
+// Fallback demo user id used when no auth token is present
 const DEMO_USER_ID = "demo-user-1";
+
+/** Returns the authenticated user's ID, or falls back to the demo user */
+function userId(req: Request): string {
+  return (req as any).user?.userId ?? DEMO_USER_ID;
+}
 
 // ── Multer — file upload config ───────────────────────────────────────────────
 
@@ -66,6 +76,119 @@ export async function registerRoutes(
 ): Promise<Server> {
   // Serve uploaded files statically
   app.use("/uploads", express.static(UPLOAD_ROOT));
+
+  // Attach auth user to every request (non-blocking)
+  app.use(attachUser);
+
+  // ── Auth ─────────────────────────────────────────────────────────────────
+
+  const signupSchema = z.object({
+    username:    z.string().min(2).max(30).regex(/^[a-z0-9_]+$/i, "Letters, numbers, underscores only"),
+    email:       z.string().email().optional().or(z.literal("")),
+    password:    z.string().min(6),
+    displayName: z.string().min(1).max(60),
+  });
+
+  const loginSchema = z.object({
+    username: z.string().min(1),
+    password: z.string().min(1),
+  });
+
+  // POST /api/auth/signup
+  app.post("/api/auth/signup", async (req: Request, res: Response) => {
+    const parsed = signupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+    }
+    const { username, email, password, displayName } = parsed.data;
+
+    // Check username uniqueness
+    const existing = await storage.getUserByUsername(username.toLowerCase());
+    if (existing) return res.status(409).json({ message: "Username already taken" });
+
+    // Check email uniqueness if provided
+    const emailVal = email && email.trim() !== "" ? email.toLowerCase() : undefined;
+    if (emailVal) {
+      const byEmail = await storage.getUserByEmail(emailVal);
+      if (byEmail) return res.status(409).json({ message: "Email already in use" });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const user = await storage.createUser({
+      username:    username.toLowerCase(),
+      displayName,
+      avatarUrl:   `https://i.pravatar.cc/150?u=${encodeURIComponent(username)}`,
+      bio:         "",
+      isArtist:    false,
+      passwordHash,
+      email:       emailVal ?? null,
+    } as any);
+
+    setAuthCookie(res, { userId: user.id, username: user.username });
+    return res.status(201).json({
+      id:          user.id,
+      username:    user.username,
+      displayName: user.displayName,
+      avatarUrl:   user.avatarUrl,
+      bio:         user.bio,
+      email:       (user as any).email ?? null,
+      isArtist:    user.isArtist,
+    });
+  });
+
+  // POST /api/auth/login
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid input" });
+    const { username, password } = parsed.data;
+
+    const user = await storage.getUserByUsername(username.toLowerCase());
+    if (!user) return res.status(401).json({ message: "Invalid username or password" });
+
+    // Demo accounts without a password hash: accept any password == "demo1234"
+    if (!user.passwordHash) {
+      if (password !== "demo1234") return res.status(401).json({ message: "Invalid username or password" });
+    } else {
+      const ok = await comparePassword(password, user.passwordHash);
+      if (!ok) return res.status(401).json({ message: "Invalid username or password" });
+    }
+
+    setAuthCookie(res, { userId: user.id, username: user.username });
+    return res.json({
+      id:          user.id,
+      username:    user.username,
+      displayName: user.displayName,
+      avatarUrl:   user.avatarUrl,
+      bio:         user.bio,
+      email:       (user as any).email ?? null,
+      isArtist:    user.isArtist,
+    });
+  });
+
+  // GET /api/auth/me — returns current user or 401
+  app.get("/api/auth/me", async (req: Request, res: Response) => {
+    const payload = getTokenFromRequest(req);
+    if (!payload) return res.status(401).json({ message: "Not authenticated" });
+
+    const user = await storage.getUser(payload.userId);
+    if (!user) return res.status(401).json({ message: "User not found" });
+
+    return res.json({
+      id:          user.id,
+      username:    user.username,
+      displayName: user.displayName,
+      avatarUrl:   user.avatarUrl,
+      bio:         user.bio,
+      email:       (user as any).email ?? null,
+      isArtist:    user.isArtist,
+    });
+  });
+
+  // POST /api/auth/logout
+  app.post("/api/auth/logout", (_req: Request, res: Response) => {
+    clearAuthCookie(res);
+    return res.json({ success: true });
+  });
 
   // ── Songs ────────────────────────────────────────────────────────────────
   app.get("/api/songs", async (_req: Request, res: Response) => {
