@@ -96,46 +96,51 @@ export async function registerRoutes(
 
   // POST /api/auth/signup
   app.post("/api/auth/signup", async (req: Request, res: Response) => {
-    const parsed = signupSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+    try {
+      const parsed = signupSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+      }
+      const { username, email, password, displayName } = parsed.data;
+
+      // Check username uniqueness
+      const existing = await storage.getUserByUsername(username.toLowerCase());
+      if (existing) return res.status(409).json({ message: "Username already taken" });
+
+      // Check email uniqueness if provided
+      const emailVal = email && email.trim() !== "" ? email.toLowerCase() : undefined;
+      if (emailVal) {
+        const byEmail = await storage.getUserByEmail(emailVal);
+        if (byEmail) return res.status(409).json({ message: "Email already in use" });
+      }
+
+      const passwordHash = await hashPassword(password);
+      const user = await storage.createUser({
+        username:    username.toLowerCase(),
+        displayName,
+        avatarUrl:   `https://i.pravatar.cc/150?u=${encodeURIComponent(username)}`,
+        bio:         "",
+        isArtist:    false,
+        passwordHash,
+        email:       emailVal ?? null,
+      } as any);
+
+      const role = (user as any).role ?? "user";
+      setAuthCookie(res, { userId: user.id, username: user.username, role });
+      return res.status(201).json({
+        id:          user.id,
+        username:    user.username,
+        displayName: user.displayName,
+        avatarUrl:   user.avatarUrl,
+        bio:         user.bio,
+        email:       (user as any).email ?? null,
+        isArtist:    user.isArtist,
+        role,
+      });
+    } catch (err: any) {
+      console.error("[signup] error:", err);
+      return res.status(500).json({ message: "Sign up failed. Please try again." });
     }
-    const { username, email, password, displayName } = parsed.data;
-
-    // Check username uniqueness
-    const existing = await storage.getUserByUsername(username.toLowerCase());
-    if (existing) return res.status(409).json({ message: "Username already taken" });
-
-    // Check email uniqueness if provided
-    const emailVal = email && email.trim() !== "" ? email.toLowerCase() : undefined;
-    if (emailVal) {
-      const byEmail = await storage.getUserByEmail(emailVal);
-      if (byEmail) return res.status(409).json({ message: "Email already in use" });
-    }
-
-    const passwordHash = await hashPassword(password);
-    const user = await storage.createUser({
-      username:    username.toLowerCase(),
-      displayName,
-      avatarUrl:   `https://i.pravatar.cc/150?u=${encodeURIComponent(username)}`,
-      bio:         "",
-      isArtist:    false,
-      passwordHash,
-      email:       emailVal ?? null,
-    } as any);
-
-    const role = (user as any).role ?? "user";
-    setAuthCookie(res, { userId: user.id, username: user.username, role });
-    return res.status(201).json({
-      id:          user.id,
-      username:    user.username,
-      displayName: user.displayName,
-      avatarUrl:   user.avatarUrl,
-      bio:         user.bio,
-      email:       (user as any).email ?? null,
-      isArtist:    user.isArtist,
-      role,
-    });
   });
 
   // POST /api/auth/login
