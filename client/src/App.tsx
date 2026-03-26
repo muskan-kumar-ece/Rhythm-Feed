@@ -17,6 +17,7 @@ import AdminDashboard from "@/pages/AdminDashboard";
 import Spotlight from "@/pages/Spotlight";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+import Settings from "@/pages/Settings";
 import Navigation from "@/components/Navigation";
 
 const AUTH_ROUTES = ["/login", "/signup"];
@@ -38,6 +39,7 @@ function AppRoutes() {
         <Route path="/trending" component={Trending} />
         <Route path="/moments" component={Moments} />
         <Route path="/profile" component={Profile} />
+        <Route path="/settings" component={Settings} />
         <Route path="/spotlight" component={Spotlight} />
 
         {/* Artist-only routes */}

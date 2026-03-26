@@ -114,6 +114,15 @@ export interface IStorage {
   // User moments
   getUserMoments(userId: string): Promise<(Moment & { user: User; song: Song })[]>;
 
+  // Preferences
+  updateUserPreferences(id: string, prefs: Partial<User["preferences"]>): Promise<User | undefined>;
+
+  // User stats
+  getUserStats(id: string): Promise<{ likedSongs: number; savedSongs: number; moments: number; totalListenSeconds: number }>;
+
+  // Username change
+  changeUsername(id: string, newUsername: string): Promise<User | undefined>;
+
   // Role management
   updateUserRole(id: string, role: string): Promise<User | undefined>;
 
@@ -162,6 +171,50 @@ export class DatabaseStorage implements IStorage {
         ...(data.bio         !== undefined && { bio:         data.bio         }),
         ...(data.avatarUrl   !== undefined && { avatarUrl:   data.avatarUrl   }),
       })
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateUserPreferences(id: string, prefs: Partial<User["preferences"]>): Promise<User | undefined> {
+    const user = await this.getUser(id);
+    if (!user) return undefined;
+    const merged = { ...((user.preferences as any) ?? {}), ...prefs };
+    const [updated] = await db.update(users)
+      .set({ preferences: merged } as any)
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getUserStats(id: string): Promise<{ likedSongs: number; savedSongs: number; moments: number; totalListenSeconds: number }> {
+    const [likedResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(songLikes)
+      .where(eq(songLikes.userId, id));
+    const [savedResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(songSaves)
+      .where(eq(songSaves.userId, id));
+    const [momentsResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(moments)
+      .where(eq(moments.userId, id));
+    const [listenResult] = await db
+      .select({ total: sql<number>`coalesce(sum(duration_seconds), 0)` })
+      .from(behaviorLogs)
+      .where(eq(behaviorLogs.userId, id));
+    return {
+      likedSongs:         Number(likedResult?.count ?? 0),
+      savedSongs:         Number(savedResult?.count ?? 0),
+      moments:            Number(momentsResult?.count ?? 0),
+      totalListenSeconds: Number(listenResult?.total ?? 0),
+    };
+  }
+
+  async changeUsername(id: string, newUsername: string): Promise<User | undefined> {
+    const [updated] = await db.update(users)
+      .set({ username: newUsername.toLowerCase() } as any)
       .where(eq(users.id, id))
       .returning();
     return updated;

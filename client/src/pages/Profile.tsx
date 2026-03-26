@@ -8,11 +8,10 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import RythamLogo from "@/components/RythamLogo";
-import SettingsPanel from "@/components/SettingsPanel";
 
 export default function Profile() {
   const [activeTab,    setActiveTab]    = useState<'liked' | 'playlists' | 'saved' | 'moments' | 'history'>('liked');
-  const [showSettings, setShowSettings] = useState(false);
+
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -127,7 +126,7 @@ export default function Profile() {
           )}
           <button
             data-testid="button-settings"
-            onClick={() => setShowSettings(true)}
+            onClick={() => setLocation("/settings")}
             className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
             title="Account Settings"
           >
@@ -542,11 +541,6 @@ export default function Profile() {
           </div>
         )}
       </div>
-
-      {/* Settings panel (change password + logout) */}
-      {showSettings && (
-        <SettingsPanel onClose={() => setShowSettings(false)} />
-      )}
 
       {/* Edit Profile modal */}
       {showEditProfile && (

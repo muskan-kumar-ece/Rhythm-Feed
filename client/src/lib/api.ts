@@ -315,6 +315,31 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
+  changeUsername: (newUsername: string, currentPassword: string) =>
+    request<{ username: string }>("/api/user/username", {
+      method: "PATCH",
+      body: JSON.stringify({ newUsername, currentPassword }),
+    }),
+
+  // Preferences
+  getPreferences: () => request<{
+    autoplay: boolean; audioQuality: "low" | "high";
+    crossfade: boolean; volumeNormalization: boolean; dataSaver: boolean;
+    pushNotifications: boolean; notifyNewSongs: boolean; notifyActivity: boolean;
+  }>("/api/user/preferences"),
+  updatePreferences: (prefs: Partial<{
+    autoplay: boolean; audioQuality: "low" | "high";
+    crossfade: boolean; volumeNormalization: boolean; dataSaver: boolean;
+    pushNotifications: boolean; notifyNewSongs: boolean; notifyActivity: boolean;
+  }>) => request<typeof prefs>("/api/user/preferences", {
+    method: "PATCH",
+    body: JSON.stringify(prefs),
+  }),
+
+  // User stats
+  getUserStats: () => request<{
+    likedSongs: number; savedSongs: number; moments: number; totalListenSeconds: number;
+  }>("/api/user/stats"),
 
   // Spotlights
   getSpotlights: (params?: { tag?: string; artist?: string; limit?: number }) => {

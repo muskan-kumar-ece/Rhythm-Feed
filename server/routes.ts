@@ -438,6 +438,92 @@ export async function registerRoutes(
     res.json(logs);
   });
 
+  // GET /api/user/preferences
+  app.get("/api/user/preferences", requireAuth, async (req: Request, res: Response) => {
+    const user = await storage.getUser(userId(req));
+    if (!user) return res.status(404).json({ message: "User not found" });
+    const defaults = {
+      autoplay: true, audioQuality: "high" as const,
+      crossfade: false, volumeNormalization: true, dataSaver: false,
+      pushNotifications: true, notifyNewSongs: true, notifyActivity: true,
+    };
+    res.json({ ...defaults, ...((user as any).preferences ?? {}) });
+  });
+
+  // PATCH /api/user/preferences
+  app.patch("/api/user/preferences", requireAuth, async (req: Request, res: Response) => {
+    const schema = z.object({
+      autoplay:            z.boolean().optional(),
+      audioQuality:        z.enum(["low", "high"]).optional(),
+      crossfade:           z.boolean().optional(),
+      volumeNormalization: z.boolean().optional(),
+      dataSaver:           z.boolean().optional(),
+      pushNotifications:   z.boolean().optional(),
+      notifyNewSongs:      z.boolean().optional(),
+      notifyActivity:      z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+    }
+    const updated = await storage.updateUserPreferences(userId(req), parsed.data);
+    if (!updated) return res.status(404).json({ message: "User not found" });
+    const defaults = {
+      autoplay: true, audioQuality: "high" as const,
+      crossfade: false, volumeNormalization: true, dataSaver: false,
+      pushNotifications: true, notifyNewSongs: true, notifyActivity: true,
+    };
+    return res.json({ ...defaults, ...((updated as any).preferences ?? {}) });
+  });
+
+  // GET /api/user/stats
+  app.get("/api/user/stats", requireAuth, async (req: Request, res: Response) => {
+    const stats = await storage.getUserStats(userId(req));
+    res.json(stats);
+  });
+
+  // PATCH /api/user/username
+  app.patch("/api/user/username", requireAuth, async (req: Request, res: Response) => {
+    const schema = z.object({
+      newUsername:     z.string().min(2).max(30).regex(/^[a-z0-9_]+$/i, "Letters, numbers, underscores only"),
+      currentPassword: z.string().min(1, "Password is required to change username"),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+    }
+    const { newUsername, currentPassword } = parsed.data;
+    const uid = userId(req);
+    const user = await storage.getUser(uid);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Verify password
+    if (!user.passwordHash) {
+      if (currentPassword !== "demo1234") {
+        return res.status(401).json({ message: "Password is incorrect" });
+      }
+    } else {
+      const ok = await comparePassword(currentPassword, user.passwordHash);
+      if (!ok) return res.status(401).json({ message: "Password is incorrect" });
+    }
+
+    // Check uniqueness
+    const taken = await storage.getUserByUsername(newUsername.toLowerCase());
+    if (taken && taken.id !== uid) {
+      return res.status(409).json({ message: "Username already taken" });
+    }
+    if (newUsername.toLowerCase() === user.username) {
+      return res.status(400).json({ message: "That is already your username" });
+    }
+
+    const updated = await storage.changeUsername(uid, newUsername);
+    if (!updated) return res.status(500).json({ message: "Could not update username" });
+
+    // Re-issue JWT with new username
+    setAuthCookie(res, { userId: updated.id, username: updated.username, role: (updated as any).role ?? "user" });
+    return res.json({ username: updated.username });
+  });
+
   // ── Artist / Studio ──────────────────────────────────────────────────────
 
   // All songs for the authenticated artist (any status: pending/approved/rejected)

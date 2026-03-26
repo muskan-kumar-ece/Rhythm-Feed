@@ -15,6 +15,16 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("user"),   // "user" | "artist" | "admin"
   passwordHash: text("password_hash"),  // null = demo/legacy accounts
   email: text("email").unique(),
+  preferences: jsonb("preferences").$type<{
+    autoplay: boolean;
+    audioQuality: "low" | "high";
+    crossfade: boolean;
+    volumeNormalization: boolean;
+    dataSaver: boolean;
+    pushNotifications: boolean;
+    notifyNewSongs: boolean;
+    notifyActivity: boolean;
+  }>().notNull().default(sql`'{}'::jsonb`),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
