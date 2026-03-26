@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2, X, LogOut } from "lucide-react";
+import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2, X } from "lucide-react";
 import { Link } from "wouter";
 import { api, ApiSong } from "@/lib/api";
 import { useLocation } from "wouter";
@@ -8,13 +8,15 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import RythamLogo from "@/components/RythamLogo";
+import SettingsPanel from "@/components/SettingsPanel";
 
 export default function Profile() {
-  const [activeTab, setActiveTab] = useState<'liked' | 'playlists' | 'saved' | 'moments' | 'history'>('liked');
+  const [activeTab,    setActiveTab]    = useState<'liked' | 'playlists' | 'saved' | 'moments' | 'history'>('liked');
+  const [showSettings, setShowSettings] = useState(false);
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { logout, state } = useAuth();
+  const { state } = useAuth();
 
   const { data: userProfile } = useQuery({ queryKey: ["user-profile"], queryFn: () => api.getProfile() });
   const { data: likedSongs = [], isLoading: likedLoading } = useQuery({ queryKey: ["liked-songs"], queryFn: () => api.getLikedSongs() });
@@ -66,21 +68,11 @@ export default function Profile() {
           </Link>
           <button
             data-testid="button-settings"
-            onClick={() => toast({ title: "Settings", description: "Settings panel coming soon." })}
+            onClick={() => setShowSettings(true)}
             className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+            title="Account Settings"
           >
             <Settings size={20} className="text-white" />
-          </button>
-          <button
-            data-testid="button-logout"
-            onClick={async () => {
-              await logout();
-              queryClient.clear();
-            }}
-            className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors"
-            title="Sign out"
-          >
-            <LogOut size={18} className="text-red-400" />
           </button>
         </div>
 
@@ -391,6 +383,11 @@ export default function Profile() {
           </div>
         )}
       </div>
+
+      {/* Settings panel (change password + logout) */}
+      {showSettings && (
+        <SettingsPanel onClose={() => setShowSettings(false)} />
+      )}
     </div>
   );
 }

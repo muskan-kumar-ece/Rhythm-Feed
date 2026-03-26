@@ -295,6 +295,13 @@ export const api = {
     body: JSON.stringify({ ids, reason }),
   }),
 
+  // Auth actions
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ success: boolean }>("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
   // Spotlights
   getSpotlights: (params?: { tag?: string; artist?: string; limit?: number }) => {
     const qs = new URLSearchParams();

@@ -190,6 +190,47 @@ export async function registerRoutes(
     return res.json({ success: true });
   });
 
+  // POST /api/auth/change-password — requires a valid auth cookie
+  app.post("/api/auth/change-password", async (req: Request, res: Response) => {
+    const payload = getTokenFromRequest(req);
+    if (!payload) return res.status(401).json({ message: "Unauthorised" });
+
+    const schema = z.object({
+      currentPassword: z.string().min(1, "Current password is required"),
+      newPassword:     z.string().min(6, "New password must be at least 6 characters"),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+    }
+    const { currentPassword, newPassword } = parsed.data;
+
+    const user = await storage.getUser(payload.userId);
+    if (!user) return res.status(401).json({ message: "User not found" });
+
+    // Verify current password (demo accounts use "demo1234")
+    if (!user.passwordHash) {
+      if (currentPassword !== "demo1234") {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+    } else {
+      const ok = await comparePassword(currentPassword, user.passwordHash);
+      if (!ok) return res.status(401).json({ message: "Current password is incorrect" });
+    }
+
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ message: "New password must be different from current password" });
+    }
+
+    const newHash = await hashPassword(newPassword);
+    await storage.updateUserAuth(payload.userId, { passwordHash: newHash });
+
+    // Re-issue a fresh token so the session stays alive
+    setAuthCookie(res, { userId: user.id, username: user.username });
+    return res.json({ success: true });
+  });
+
   // ── Songs ────────────────────────────────────────────────────────────────
   app.get("/api/songs", async (_req: Request, res: Response) => {
     const songs = await storage.getSongs();
