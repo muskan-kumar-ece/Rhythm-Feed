@@ -156,6 +156,7 @@ export type ApiSpotlight = {
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -168,7 +169,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 // Upload (multipart — no Content-Type header, browser sets boundary automatically)
 async function upload<T>(url: string, formData: FormData): Promise<T> {
-  const res = await fetch(url, { method: "POST", body: formData });
+  const res = await fetch(url, { method: "POST", credentials: "include", body: formData });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(err.message || "Upload failed");
@@ -218,6 +219,8 @@ export const api = {
 
   // User
   getProfile: () => request<ApiUser>("/api/user/profile"),
+  updateProfile: (data: { displayName?: string; bio?: string; avatarUrl?: string }) =>
+    request<ApiUser>("/api/user/profile", { method: "PATCH", body: JSON.stringify(data) }),
   getHistory: () => request<{ songId: string; durationSeconds: number; skipped: boolean; liked: boolean; replays: number; createdAt: string }[]>("/api/behavior"),
 
   // Behavior

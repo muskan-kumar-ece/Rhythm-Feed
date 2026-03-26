@@ -242,12 +242,12 @@ export async function registerRoutes(
     res.json(songs);
   });
 
-  // Ranked feed: score + diversity-order songs for the demo user
+  // Ranked feed: score + diversity-order songs for the current user
   // Accepts optional ?ctx=<url-encoded-json> (SessionContext from the client)
   app.get("/api/songs/ranked", async (req: Request, res: Response) => {
     const [allSongs, behaviorLogs] = await Promise.all([
       storage.getSongs(),
-      storage.getUserBehaviorLogs(DEMO_USER_ID),
+      storage.getUserBehaviorLogs(userId(req)),
     ]);
 
     let sessionCtx: Parameters<typeof rankSongsForUser>[2] = undefined;
@@ -281,7 +281,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/songs", async (req: Request, res: Response) => {
-    const result = insertSongSchema.safeParse({ ...req.body, uploadedBy: DEMO_USER_ID });
+    const result = insertSongSchema.safeParse({ ...req.body, uploadedBy: userId(req) });
     if (!result.success) return res.status(400).json({ message: result.error.message });
     // New songs enter the discovery pipeline at test phase — small audience first
     const song = await storage.createSong({
@@ -299,43 +299,43 @@ export async function registerRoutes(
 
   // ── Likes ────────────────────────────────────────────────────────────────
   app.get("/api/songs/:id/liked", async (req: Request, res: Response) => {
-    const liked = await storage.isLiked(DEMO_USER_ID, req.params.id);
+    const liked = await storage.isLiked(userId(req), req.params.id);
     res.json({ liked });
   });
 
   app.post("/api/songs/:id/like", async (req: Request, res: Response) => {
-    await storage.likeSong(DEMO_USER_ID, req.params.id);
+    await storage.likeSong(userId(req), req.params.id);
     res.json({ success: true });
   });
 
   app.delete("/api/songs/:id/like", async (req: Request, res: Response) => {
-    await storage.unlikeSong(DEMO_USER_ID, req.params.id);
+    await storage.unlikeSong(userId(req), req.params.id);
     res.json({ success: true });
   });
 
-  app.get("/api/user/liked-songs", async (_req: Request, res: Response) => {
-    const songs = await storage.getLikedSongs(DEMO_USER_ID);
+  app.get("/api/user/liked-songs", async (req: Request, res: Response) => {
+    const songs = await storage.getLikedSongs(userId(req));
     res.json(songs);
   });
 
   // ── Saves ────────────────────────────────────────────────────────────────
   app.get("/api/songs/:id/saved", async (req: Request, res: Response) => {
-    const saved = await storage.isSaved(DEMO_USER_ID, req.params.id);
+    const saved = await storage.isSaved(userId(req), req.params.id);
     res.json({ saved });
   });
 
   app.post("/api/songs/:id/save", async (req: Request, res: Response) => {
-    await storage.saveSong(DEMO_USER_ID, req.params.id);
+    await storage.saveSong(userId(req), req.params.id);
     res.json({ success: true });
   });
 
   app.delete("/api/songs/:id/save", async (req: Request, res: Response) => {
-    await storage.unsaveSong(DEMO_USER_ID, req.params.id);
+    await storage.unsaveSong(userId(req), req.params.id);
     res.json({ success: true });
   });
 
-  app.get("/api/user/saved-songs", async (_req: Request, res: Response) => {
-    const songs = await storage.getSavedSongs(DEMO_USER_ID);
+  app.get("/api/user/saved-songs", async (req: Request, res: Response) => {
+    const songs = await storage.getSavedSongs(userId(req));
     res.json(songs);
   });
 
@@ -346,24 +346,24 @@ export async function registerRoutes(
   });
 
   app.post("/api/moments", async (req: Request, res: Response) => {
-    const result = insertMomentSchema.safeParse({ ...req.body, userId: DEMO_USER_ID });
+    const result = insertMomentSchema.safeParse({ ...req.body, userId: userId(req) });
     if (!result.success) return res.status(400).json({ message: result.error.message });
     const moment = await storage.createMoment(result.data);
     res.status(201).json(moment);
   });
 
   app.post("/api/moments/:id/like", async (req: Request, res: Response) => {
-    await storage.likeMoment(DEMO_USER_ID, req.params.id);
+    await storage.likeMoment(userId(req), req.params.id);
     res.json({ success: true });
   });
 
   app.delete("/api/moments/:id/like", async (req: Request, res: Response) => {
-    await storage.unlikeMoment(DEMO_USER_ID, req.params.id);
+    await storage.unlikeMoment(userId(req), req.params.id);
     res.json({ success: true });
   });
 
   app.get("/api/moments/:id/liked", async (req: Request, res: Response) => {
-    const liked = await storage.isMomentLiked(DEMO_USER_ID, req.params.id);
+    const liked = await storage.isMomentLiked(userId(req), req.params.id);
     res.json({ liked });
   });
 
@@ -374,7 +374,7 @@ export async function registerRoutes(
 
   // ── Behavior Logging ─────────────────────────────────────────────────────
   app.post("/api/behavior", async (req: Request, res: Response) => {
-    const result = insertBehaviorLogSchema.safeParse({ ...req.body, userId: DEMO_USER_ID });
+    const result = insertBehaviorLogSchema.safeParse({ ...req.body, userId: userId(req) });
     if (!result.success) return res.status(400).json({ message: result.error.message });
     const log = await storage.logBehavior(result.data);
     res.status(201).json(log);
@@ -391,27 +391,53 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/behavior", async (_req: Request, res: Response) => {
-    const logs = await storage.getUserBehaviorLogs(DEMO_USER_ID);
+  app.get("/api/behavior", async (req: Request, res: Response) => {
+    const logs = await storage.getUserBehaviorLogs(userId(req));
     res.json(logs);
   });
 
   // ── User / Profile ───────────────────────────────────────────────────────
-  app.get("/api/user/profile", async (_req: Request, res: Response) => {
-    const user = await storage.getUser(DEMO_USER_ID);
-    res.json(user);
+  app.get("/api/user/profile", async (req: Request, res: Response) => {
+    const user = await storage.getUser(userId(req));
+    if (!user) return res.status(404).json({ message: "User not found" });
+    const { passwordHash: _pw, ...safe } = user as any;
+    res.json(safe);
   });
 
-  app.get("/api/user/history", async (_req: Request, res: Response) => {
-    const logs = await storage.getUserBehaviorLogs(DEMO_USER_ID);
+  app.patch("/api/user/profile", requireAuth, async (req: Request, res: Response) => {
+    const schema = z.object({
+      displayName: z.string().min(1).max(60).optional(),
+      bio:         z.string().max(200).optional(),
+      avatarUrl:   z.string().url().optional().or(z.literal("")),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+    }
+    const updated = await storage.updateUserProfile(userId(req), parsed.data);
+    if (!updated) return res.status(404).json({ message: "User not found" });
+    return res.json({
+      id:          updated.id,
+      username:    updated.username,
+      displayName: updated.displayName,
+      avatarUrl:   updated.avatarUrl,
+      bio:         updated.bio,
+      email:       (updated as any).email ?? null,
+      isArtist:    updated.isArtist,
+      role:        (updated as any).role ?? "user",
+    });
+  });
+
+  app.get("/api/user/history", async (req: Request, res: Response) => {
+    const logs = await storage.getUserBehaviorLogs(userId(req));
     res.json(logs);
   });
 
   // ── Artist / Studio ──────────────────────────────────────────────────────
 
   // All songs for the authenticated artist (any status: pending/approved/rejected)
-  app.get("/api/artist/songs", async (_req: Request, res: Response) => {
-    const artistSongs = await storage.getArtistSongsAll(DEMO_USER_ID);
+  app.get("/api/artist/songs", requireAuth, async (req: Request, res: Response) => {
+    const artistSongs = await storage.getArtistSongsAll(userId(req));
     res.json(artistSongs);
   });
 
@@ -618,7 +644,7 @@ export async function registerRoutes(
 
     const [allSongs, logs] = await Promise.all([
       storage.getSongs(),
-      storage.getUserBehaviorLogs(DEMO_USER_ID),
+      storage.getUserBehaviorLogs(userId(req)),
     ]);
 
     const hour = new Date().getHours();
@@ -857,7 +883,7 @@ export async function registerRoutes(
     const { excludeIds = [], sessionCtx } = req.body as { excludeIds?: string[]; sessionCtx?: Parameters<typeof rankSongsForUser>[2] };
     const [allSongs, logs] = await Promise.all([
       storage.getSongs(),
-      storage.getUserBehaviorLogs(DEMO_USER_ID),
+      storage.getUserBehaviorLogs(userId(req)),
     ]);
 
     const ranked = rankSongsForUser(allSongs, logs, sessionCtx ?? undefined);
@@ -899,32 +925,32 @@ export async function registerRoutes(
   app.get("/api/artists/followed", async (req: Request, res: Response) => {
     const artistName = req.query.artistName as string;
     if (!artistName) return res.status(400).json({ message: "artistName required" });
-    const following = await storage.isFollowingArtist(DEMO_USER_ID, artistName);
+    const following = await storage.isFollowingArtist(userId(req), artistName);
     res.json({ following });
   });
 
   app.post("/api/artists/follow", async (req: Request, res: Response) => {
     const { artistName } = req.body;
     if (!artistName) return res.status(400).json({ message: "artistName required" });
-    await storage.followArtist(DEMO_USER_ID, artistName);
+    await storage.followArtist(userId(req), artistName);
     res.json({ success: true, following: true });
   });
 
   app.delete("/api/artists/follow", async (req: Request, res: Response) => {
     const { artistName } = req.body;
     if (!artistName) return res.status(400).json({ message: "artistName required" });
-    await storage.unfollowArtist(DEMO_USER_ID, artistName);
+    await storage.unfollowArtist(userId(req), artistName);
     res.json({ success: true, following: false });
   });
 
-  app.get("/api/artists/following", async (_req: Request, res: Response) => {
-    const artists = await storage.getFollowedArtists(DEMO_USER_ID);
+  app.get("/api/artists/following", async (req: Request, res: Response) => {
+    const artists = await storage.getFollowedArtists(userId(req));
     res.json(artists);
   });
 
   // ── User moments ──────────────────────────────────────────────────────────
-  app.get("/api/user/moments", async (_req: Request, res: Response) => {
-    const userMoments = await storage.getUserMoments(DEMO_USER_ID);
+  app.get("/api/user/moments", async (req: Request, res: Response) => {
+    const userMoments = await storage.getUserMoments(userId(req));
     res.json(userMoments);
   });
 
@@ -960,17 +986,17 @@ export async function registerRoutes(
 
   // Like / unlike
   app.get("/api/spotlights/:id/liked", async (req: Request, res: Response) => {
-    const liked = await storage.isSpotlightLiked(DEMO_USER_ID, req.params.id);
+    const liked = await storage.isSpotlightLiked(userId(req), req.params.id);
     res.json({ liked });
   });
 
   app.post("/api/spotlights/:id/like", async (req: Request, res: Response) => {
-    await storage.likeSpotlight(DEMO_USER_ID, req.params.id);
+    await storage.likeSpotlight(userId(req), req.params.id);
     res.json({ success: true, liked: true });
   });
 
   app.delete("/api/spotlights/:id/like", async (req: Request, res: Response) => {
-    await storage.unlikeSpotlight(DEMO_USER_ID, req.params.id);
+    await storage.unlikeSpotlight(userId(req), req.params.id);
     res.json({ success: true, liked: false });
   });
 

@@ -58,6 +58,24 @@ export default function Profile() {
     }
   };
 
+  // ── Profile editing ──────────────────────────────────────────────────────
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editBio,         setEditBio]         = useState("");
+
+  const editProfileMutation = useMutation({
+    mutationFn: (data: { displayName: string; bio: string }) => api.updateProfile(data),
+    onSuccess: (updated) => {
+      toast({ title: "Profile updated" });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      refresh();
+      setShowEditProfile(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message ?? "Could not update profile", variant: "destructive" });
+    },
+  });
+
   const { data: userProfile } = useQuery({ queryKey: ["user-profile"], queryFn: () => api.getProfile() });
   const { data: likedSongs = [], isLoading: likedLoading } = useQuery({ queryKey: ["liked-songs"], queryFn: () => api.getLikedSongs() });
   const { data: savedSongs = [], isLoading: savedLoading } = useQuery({ queryKey: ["saved-songs"], queryFn: () => api.getSavedSongs() });
@@ -100,11 +118,13 @@ export default function Profile() {
           <RythamLogo size="xs" />
         </div>
         <div className="absolute top-6 right-6 flex gap-4">
-          <Link href="/admin">
-            <a className="w-10 h-10 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center hover:bg-primary/20 transition-colors" title="Platform Analytics">
-              <BarChart2 size={18} className="text-primary" />
-            </a>
-          </Link>
+          {role === "admin" && (
+            <Link href="/admin">
+              <a className="w-10 h-10 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center hover:bg-primary/20 transition-colors" title="Admin Panel">
+                <BarChart2 size={18} className="text-primary" />
+              </a>
+            </Link>
+          )}
           <button
             data-testid="button-settings"
             onClick={() => setShowSettings(true)}
@@ -122,7 +142,11 @@ export default function Profile() {
             </div>
             <button
               data-testid="button-edit-profile"
-              onClick={() => toast({ title: "Edit Profile", description: "Profile editing coming soon." })}
+              onClick={() => {
+                setEditDisplayName(user.name);
+                setEditBio(user.bio);
+                setShowEditProfile(true);
+              }}
               className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center border-2 border-background opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
             >
               <Edit2 size={14} className="text-primary-foreground" />
@@ -522,6 +546,69 @@ export default function Profile() {
       {/* Settings panel (change password + logout) */}
       {showSettings && (
         <SettingsPanel onClose={() => setShowSettings(false)} />
+      )}
+
+      {/* Edit Profile modal */}
+      {showEditProfile && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowEditProfile(false)} />
+          <div className="relative w-full max-w-sm bg-[#0d0d14] border border-white/10 rounded-t-3xl p-6 pb-10 space-y-4 animate-slide-up">
+            <button
+              onClick={() => setShowEditProfile(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/40 hover:text-white transition-colors"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
+                <Edit2 size={16} className="text-primary" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white">Edit Profile</h2>
+                <p className="text-xs text-white/40">Update your display name and bio</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-white/50 mb-1.5">Display Name</label>
+                <input
+                  data-testid="input-display-name"
+                  type="text"
+                  value={editDisplayName}
+                  onChange={e => setEditDisplayName(e.target.value)}
+                  maxLength={60}
+                  placeholder="Your display name"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 outline-none focus:border-primary/40 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white/50 mb-1.5">Bio</label>
+                <textarea
+                  data-testid="input-bio"
+                  value={editBio}
+                  onChange={e => setEditBio(e.target.value)}
+                  maxLength={200}
+                  rows={3}
+                  placeholder="Tell us about yourself…"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 resize-none outline-none focus:border-primary/40 transition-colors"
+                />
+                <p className="text-[10px] text-white/20 text-right mt-1">{editBio.length}/200</p>
+              </div>
+            </div>
+
+            <button
+              data-testid="button-save-profile"
+              disabled={editProfileMutation.isPending || !editDisplayName.trim()}
+              onClick={() => editProfileMutation.mutate({ displayName: editDisplayName.trim(), bio: editBio.trim() })}
+              className="w-full py-3 rounded-2xl bg-primary text-black font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {editProfileMutation.isPending ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+              Save Changes
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Become an Artist — application modal */}
