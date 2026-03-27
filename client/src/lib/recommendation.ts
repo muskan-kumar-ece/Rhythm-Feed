@@ -26,6 +26,18 @@ export function markSongShown(songId: string) {
   _shownBaseIds.add(stripSuffix(songId));
 }
 
+/** Returns the set of base IDs already shown this session. */
+export function getShownBaseIds(): ReadonlySet<string> {
+  return _shownBaseIds;
+}
+
+/** Returns how many unique base IDs have been shown vs pool size — useful for refetch decisions. */
+export function getPoolExhaustionRatio(): number {
+  if (_rankedPool.length === 0) return 0;
+  const shownCount = _rankedPool.filter(s => _shownBaseIds.has(stripSuffix(s.id))).length;
+  return shownCount / _rankedPool.length;
+}
+
 function stripSuffix(id: string): string {
   return id
     .split("-rank-")[0]

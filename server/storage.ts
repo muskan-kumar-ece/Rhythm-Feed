@@ -341,6 +341,29 @@ export class DatabaseStorage implements IStorage {
 
   async incrementSongStat(songId: string, field: "likes" | "comments" | "saves" | "shares"): Promise<void> {
     await db.update(songs).set({ [field]: sql`${songs[field]} + 1` }).where(eq(songs.id, songId));
+
+    // Mirror into features.popularity so the ranking engine picks up social signals
+    if (field === "likes" || field === "shares" || field === "comments") {
+      await db.execute(sql`
+        UPDATE songs
+        SET features = features || jsonb_build_object(
+          'popularity', jsonb_build_object(
+            'plays',       COALESCE((features->'popularity'->>'plays')::int,       0),
+            'completions', COALESCE((features->'popularity'->>'completions')::int, 0),
+            'replays',     COALESCE((features->'popularity'->>'replays')::int,     0),
+            'likes',       COALESCE((features->'popularity'->>'likes')::int,       0) + ${field === "likes" ? 1 : 0},
+            'shares',      COALESCE((features->'popularity'->>'shares')::int,      0) + ${field === "shares" ? 1 : 0},
+            'recent24h', jsonb_build_object(
+              'plays',    COALESCE((features->'popularity'->'recent24h'->>'plays')::int,    0),
+              'likes',    COALESCE((features->'popularity'->'recent24h'->>'likes')::int,    0) + ${field === "likes" ? 1 : 0},
+              'replays',  COALESCE((features->'popularity'->'recent24h'->>'replays')::int,  0),
+              'comments', COALESCE((features->'popularity'->'recent24h'->>'comments')::int, 0) + ${field === "comments" ? 1 : 0}
+            )
+          )
+        )
+        WHERE id = ${songId}
+      `).catch(() => {});
+    }
   }
 
   async decrementSongStat(songId: string, field: "likes" | "saves"): Promise<void> {
@@ -452,6 +475,33 @@ export class DatabaseStorage implements IStorage {
 
   async logBehavior(log: InsertBehaviorLog): Promise<BehaviorLog> {
     const [newLog] = await db.insert(behaviorLogs).values(log).returning();
+
+    // Atomically update features.popularity so the ranking engine gets real signals.
+    // A listen is a "completion" when the user didn't skip and listened for ≥60 s.
+    const isCompletion = !log.skipped && log.durationSeconds >= 60;
+    const addReplays   = Math.max(0, log.replays);
+    const addLike      = log.liked ? 1 : 0;
+
+    await db.execute(sql`
+      UPDATE songs
+      SET features = features || jsonb_build_object(
+        'popularity', jsonb_build_object(
+          'plays',       COALESCE((features->'popularity'->>'plays')::int,       0) + 1,
+          'completions', COALESCE((features->'popularity'->>'completions')::int, 0) + ${isCompletion ? 1 : 0},
+          'replays',     COALESCE((features->'popularity'->>'replays')::int,     0) + ${addReplays},
+          'likes',       COALESCE((features->'popularity'->>'likes')::int,       0) + ${addLike},
+          'shares',      COALESCE((features->'popularity'->>'shares')::int,      0),
+          'recent24h', jsonb_build_object(
+            'plays',    COALESCE((features->'popularity'->'recent24h'->>'plays')::int,    0) + 1,
+            'likes',    COALESCE((features->'popularity'->'recent24h'->>'likes')::int,    0) + ${addLike},
+            'replays',  COALESCE((features->'popularity'->'recent24h'->>'replays')::int,  0) + ${addReplays > 0 ? 1 : 0},
+            'comments', COALESCE((features->'popularity'->'recent24h'->>'comments')::int, 0)
+          )
+        )
+      )
+      WHERE id = ${log.songId}
+    `).catch(() => {}); // Non-blocking — never fail a behavior log on feature update error
+
     return newLog;
   }
 

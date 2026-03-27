@@ -10,6 +10,8 @@ import {
   generateMoodFeedSegment,
   generateColdStartFeedSegment,
   setSongsPool,
+  getShownBaseIds,
+  getPoolExhaustionRatio,
 } from "@/lib/recommendation";
 import {
   getSessionContext,
@@ -89,23 +91,67 @@ export default function Feed() {
   const [sessionVersion, setSessionVersion] = useState(0);
   const sessionCountRef                     = useRef(0);
   const queryClient                         = useQueryClient();
+  const fetchingMoreRef                     = useRef(false);
 
   const handleSessionEvent = useCallback(() => {
     sessionCountRef.current += 1;
-    if (sessionCountRef.current % 3 === 0) {
+    // Re-rank every 2 events (faster personalisation loop)
+    if (sessionCountRef.current % 2 === 0) {
       queryClient.invalidateQueries({ queryKey: ["ranked-songs"] });
       setSessionVersion(v => v + 1);
     }
   }, [queryClient]);
+
+  // Fetch a fresh server-ranked batch when the local pool runs thin.
+  // Excludes all songs already shown this session so the ranking engine
+  // returns genuinely new personalised content.
+  const expandFeedWithServer = useCallback(async (mood: string) => {
+    if (fetchingMoreRef.current) return;
+    fetchingMoreRef.current = true;
+    try {
+      const shownIds = [...getShownBaseIds()];
+      const sessionCtx = getSessionContext();
+      const effectiveCtx = sessionCtx ?? (onboardingPrefs ? buildColdStartContext(onboardingPrefs) : null);
+      const newSongs = await api.getFeed({ limit: 20, exclude: shownIds, ctx: effectiveCtx });
+      if (newSongs.length > 0) {
+        setSongsPool(newSongs);
+        if (mood === "For You") {
+          setFeedItems(prev => [...prev, ...generateFeedSegment()]);
+        } else {
+          setFeedItems(prev => [...prev, ...generateMoodFeedSegment(mood)]);
+        }
+      } else {
+        // Server has no new songs — fall back to client-side segment
+        if (mood === "For You") {
+          setFeedItems(prev => [...prev, ...generateFeedSegment()]);
+        } else {
+          setFeedItems(prev => [...prev, ...generateMoodFeedSegment(mood)]);
+        }
+      }
+    } catch {
+      // Network error — degrade gracefully
+      if (mood === "For You") {
+        setFeedItems(prev => [...prev, ...generateFeedSegment()]);
+      } else {
+        setFeedItems(prev => [...prev, ...generateMoodFeedSegment(mood)]);
+      }
+    } finally {
+      fetchingMoreRef.current = false;
+    }
+  }, [onboardingPrefs]);
 
   // ── DJ Mode auto-advance ──────────────────────────────────────────────────
   const handleSongEnd = useCallback(() => {
     if (!containerRef.current) return;
     const nextIndex = activeIndex + 1;
 
-    // Expand feed if needed
+    // Expand feed if needed — use server batch when pool is nearly exhausted
     if (nextIndex >= feedItems.length - 1) {
-      setFeedItems(prev => [...prev, ...generateFeedSegment()]);
+      if (getPoolExhaustionRatio() >= 0.7) {
+        expandFeedWithServer(selectedMood);
+      } else {
+        setFeedItems(prev => [...prev, ...generateFeedSegment()]);
+      }
     }
 
     // Brief "selecting" indicator
@@ -117,7 +163,7 @@ export default function Feed() {
       if (!containerRef.current) return;
       containerRef.current.scrollTo({ top: (activeIndex + 1) * window.innerHeight, behavior: "smooth" });
     }, 300);
-  }, [activeIndex, feedItems.length]);
+  }, [activeIndex, feedItems.length, selectedMood, expandFeedWithServer]);
 
   // ── Ranked songs query ───────────────────────────────────────────────────────
   const { data: allSongs, isLoading } = useQuery({
@@ -202,14 +248,18 @@ export default function Feed() {
       }
 
       if (index >= feedItems.length - 2) {
-        if (selectedMood === "For You") {
+        // If ≥70% of the pool has been shown, ask the server for a fresh personalised batch.
+        // Otherwise generate from the local pool as before.
+        if (getPoolExhaustionRatio() >= 0.7) {
+          expandFeedWithServer(selectedMood);
+        } else if (selectedMood === "For You") {
           setFeedItems(prev => [...prev, ...generateFeedSegment()]);
         } else {
           setFeedItems(prev => [...prev, ...generateMoodFeedSegment(selectedMood)]);
         }
       }
     });
-  }, [activeIndex, feedItems.length, selectedMood, showGreeting]);
+  }, [activeIndex, feedItems.length, selectedMood, showGreeting, expandFeedWithServer]);
 
   // ── Greeting text ─────────────────────────────────────────────────────────────
   const hour = new Date().getHours();

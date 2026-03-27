@@ -228,6 +228,14 @@ export const api = {
       : "/api/songs/ranked";
     return request<ApiSong[]>(url);
   },
+  getFeed: (opts?: { limit?: number; exclude?: string[]; ctx?: SessionContext | null }) => {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.exclude?.length) params.set("exclude", opts.exclude.join(","));
+    if (opts?.ctx) params.set("ctx", encodeURIComponent(JSON.stringify(opts.ctx)));
+    const qs = params.toString();
+    return request<ApiSong[]>(qs ? `/api/feed?${qs}` : "/api/feed");
+  },
   getSongsByMood: (mood: string) => request<ApiSong[]>(`/api/songs/mood/${encodeURIComponent(mood)}`),
   searchSongs: (query: string) => request<ApiSong[]>(`/api/songs/search?q=${encodeURIComponent(query)}`),
   createSong: (data: Partial<ApiSong>) => request<ApiSong>("/api/songs", { method: "POST", body: JSON.stringify(data) }),

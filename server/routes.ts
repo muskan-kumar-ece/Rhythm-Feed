@@ -288,6 +288,33 @@ export async function registerRoutes(
     res.json(ranked);
   });
 
+  // ── Personalised Feed API ───────────────────────────────────────────────────
+  // A cleaner endpoint for fetching a curated feed page with:
+  //   - Full 3-stage ranking (engagement + taste + diversity)
+  //   - Session deduplication via ?exclude=id1,id2,...
+  //   - Configurable page size via ?limit=N (default 20, max 50)
+  app.get("/api/feed", async (req: Request, res: Response) => {
+    const limit      = Math.min(parseInt((req.query.limit as string) || "20", 10), 50);
+    const excludeRaw = (req.query.exclude as string) || "";
+    const excludeIds = new Set(excludeRaw ? excludeRaw.split(",").map(s => s.trim()).filter(Boolean) : []);
+
+    const [allSongs, logs] = await Promise.all([
+      storage.getSongs(),
+      storage.getUserBehaviorLogs(userId(req)),
+    ]);
+
+    let sessionCtx: Parameters<typeof rankSongsForUser>[2] = undefined;
+    try {
+      const rawCtx = req.query.ctx as string | undefined;
+      if (rawCtx) sessionCtx = JSON.parse(decodeURIComponent(rawCtx));
+    } catch { /* proceed without session context */ }
+
+    const ranked = rankSongsForUser(allSongs, logs, sessionCtx);
+    // Filter out already-seen songs and return the requested page
+    const page = ranked.filter(s => !excludeIds.has(s.id)).slice(0, limit);
+    res.json(page);
+  });
+
   app.get("/api/songs/search", async (req: Request, res: Response) => {
     const query = (req.query.q as string) || "";
     if (!query) return res.json([]);
@@ -319,7 +346,17 @@ export async function registerRoutes(
   });
 
   app.post("/api/songs/:id/share", async (req: Request, res: Response) => {
-    await storage.incrementSongStat(req.params.id, "shares");
+    const songId = req.params.id;
+    await storage.incrementSongStat(songId, "shares");
+    // Log share as a strong positive behavior signal for the ranking engine
+    storage.logBehavior({
+      userId: userId(req),
+      songId,
+      durationSeconds: 0,
+      skipped: false,
+      liked: false,
+      replays: 0,
+    }).catch(() => {});
     res.json({ success: true });
   });
 

@@ -1,0 +1,143 @@
+Replace the current feed ranking with a real intelligent recommendation engine.
+
+---
+
+🎯 PROBLEM:
+
+- Feed is random or simple sorting
+- No personalization
+- Same songs shown to all users
+- No learning from behavior
+
+---
+
+🛠️ STEP 1: USER INTERACTION TRACKING (VERY IMPORTANT)
+
+Create a new table:
+
+userInteractions:
+
+- id
+- userId
+- songId
+- actionType ("play" | "like" | "skip" | "share" | "comment")
+- watchTime (seconds)
+- createdAt
+
+---
+
+🛠️ STEP 2: TRACK EVENTS
+
+Track automatically:
+
+1. When song starts → log "play"
+2. If user watches >70% → strong positive signal
+3. If skipped quickly (<3s) → negative signal
+4. Like → strong positive
+5. Share → very strong positive
+6. Comment → strong positive
+
+---
+
+🛠️ STEP 3: SCORING SYSTEM
+
+Create function:
+
+rankSongsForUser(userId)
+
+Score formula:
+
+score =
++ 5 × likes
++ 6 × shares
++ 4 × comments
++ 3 × full plays
+- 3 × skips
+
+---
+
+🛠️ STEP 4: PERSONALIZATION LAYER
+
+Boost songs based on:
+
+- same artist as liked songs
+- same genre
+- same mood
+
+---
+
+🛠️ STEP 5: DIVERSITY CONTROL
+
+Avoid repetition:
+
+- don’t show same song again in 10 swipes
+- mix new + trending + personal
+
+---
+
+🛠️ STEP 6: BACKEND FEED API
+
+GET /api/feed
+
+- return ranked songs for user
+- limit (10–20 songs)
+- mix:
+  60% personalized
+  30% trending
+  10% new uploads
+
+---
+
+🛠️ STEP 7: FRONTEND INTEGRATION
+
+Replace feed logic:
+
+- fetch from /api/feed
+- preload next songs
+- smooth infinite scroll
+
+---
+
+🛠️ STEP 8: SESSION MEMORY
+
+Track current session:
+
+- songs already shown
+- avoid duplicates
+
+---
+
+🛠️ STEP 9: COLD START PROBLEM
+
+If new user:
+
+- ask:
+  mood
+  favorite genres
+
+Then:
+- use that to seed feed
+
+---
+
+🛠️ STEP 10: AI DJ INTRO (OPTIONAL BUT COOL)
+
+At start of feed:
+
+"Based on your vibe, here’s your mix 🎧"
+
+---
+
+📊 TEST CASES:
+
+1. Like songs → similar songs appear
+2. Skip songs → similar ones reduce
+3. Share → more like that appear
+4. New user → gets interest-based feed
+5. Feed refresh → changes dynamically
+
+---
+
+🎯 GOAL:
+
+Make feed feel addictive, personal, and intelligent.
