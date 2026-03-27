@@ -1,5 +1,9 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip,
+  ResponsiveContainer, ReferenceDot,
+} from "recharts";
 import {
   Upload, FileAudio, Image as ImageIcon, Tag, Activity, Users, Clock, PlayCircle,
   Plus, Music, Repeat, Heart, MessageCircle, TrendingUp, BarChart2, Sun, Lightbulb,
@@ -33,6 +37,19 @@ function fmtBytes(b: number): string {
   if (b >= 1_000_000) return (b / 1_000_000).toFixed(1) + " MB";
   if (b >= 1_000)     return (b / 1_000).toFixed(0) + " KB";
   return b + " B";
+}
+
+// ── Retention Tooltip ─────────────────────────────────────────────────────────
+
+function RetentionTooltip({ active, payload }: { active?: boolean; payload?: { payload: { second: number; listeners: number } }[] }) {
+  if (!active || !payload?.length) return null;
+  const { second, listeners } = payload[0].payload;
+  return (
+    <div className="bg-black/90 border border-white/10 rounded-xl px-3 py-2 shadow-2xl">
+      <p className="text-white/50 text-[10px]">At {second}s</p>
+      <p className="text-white font-bold text-sm">{listeners}% remaining</p>
+    </div>
+  );
 }
 
 // ── Status Badge ──────────────────────────────────────────────────────────────
@@ -702,10 +719,56 @@ export default function ArtistPortal() {
     refetchInterval: uploadResult ? 5000 : false,
   });
 
-  const { data: moodData }    = useQuery({ queryKey: ["analytics-mood"],  queryFn: api.getMoodBreakdown });
-  const { data: retentionData } = useQuery({ queryKey: ["analytics-retention", ""], queryFn: () => api.getRetentionData("") });
-  const { data: hourlyData }  = useQuery({ queryKey: ["analytics-hourly"], queryFn: api.getHourlyPerformance });
-  const { data: growthData }  = useQuery({ queryKey: ["analytics-growth"], queryFn: api.getListenerGrowth });
+  const { data: moodData }   = useQuery({ queryKey: ["analytics-mood"],  queryFn: api.getMoodBreakdown });
+  const { data: hourlyData } = useQuery({ queryKey: ["analytics-hourly"], queryFn: api.getHourlyPerformance });
+  const { data: growthData } = useQuery({ queryKey: ["analytics-growth"], queryFn: api.getListenerGrowth });
+
+  // ── Retention — per-song with song selector ────────────────────────────────
+  const [retentionSongId, setRetentionSongId] = useState<string>("");
+  // Sync to first approved song when list loads
+  useEffect(() => {
+    if (!retentionSongId && artistSongs.length > 0) {
+      const first = artistSongs.find(s => s.status === "approved") ?? artistSongs[0];
+      setRetentionSongId(first.id);
+    }
+  }, [artistSongs, retentionSongId]);
+
+  const { data: retentionData, isLoading: retentionLoading } = useQuery({
+    queryKey: ["analytics-retention", retentionSongId],
+    queryFn: () => api.getRetentionData(retentionSongId),
+    enabled: !!retentionSongId,
+    staleTime: 60_000,
+  });
+
+  const biggestDropPoint = useMemo(() => {
+    if (!retentionData || retentionData.length < 2) return null;
+    let maxDrop = 0, idx = -1;
+    for (let i = 1; i < retentionData.length; i++) {
+      const drop = retentionData[i - 1].listeners - retentionData[i].listeners;
+      if (drop > maxDrop) { maxDrop = drop; idx = i; }
+    }
+    return maxDrop >= 5 ? retentionData[idx] : null;
+  }, [retentionData]);
+
+  const retentionInsights = useMemo(() => {
+    if (!retentionData || retentionData.length < 2) return null;
+    const first   = retentionData[0]?.listeners ?? 100;
+    const at10    = retentionData.find(d => d.second === 10)?.listeners ?? first;
+    const at30    = retentionData.find(d => d.second === 30)?.listeners ?? first;
+    const last    = retentionData[retentionData.length - 1]?.listeners ?? 0;
+    let maxDrop = 0, maxDropSec = -1;
+    for (let i = 1; i < retentionData.length; i++) {
+      const drop = retentionData[i - 1].listeners - retentionData[i].listeners;
+      if (drop > maxDrop) { maxDrop = drop; maxDropSec = retentionData[i].second; }
+    }
+    const earlyDrop = first - at10;
+    if (earlyDrop > 30) return { type: "warning" as const, text: "Your intro may not be engaging enough — many listeners drop off in the first 10 seconds." };
+    if (last > 70)      return { type: "win"     as const, text: "Excellent retention — most listeners make it to the end. Great work!" };
+    if (at30 > 75)      return { type: "win"     as const, text: "Strong retention through 30 seconds — your hook is landing perfectly." };
+    if (maxDropSec >= 30 && maxDropSec <= 60) return { type: "tip" as const, text: `Listeners disengage around the ${maxDropSec}s mark — consider adding energy or variation at this point.` };
+    if (last < 30)      return { type: "warning" as const, text: "High drop-off overall — try a stronger hook or surprise element earlier in the track." };
+    return { type: "tip" as const, text: "Moderate retention. Adding a distinctive moment at 30–45 seconds could hold listeners longer." };
+  }, [retentionData]);
 
   // ── Analytics derived ──────────────────────────────────────────────────────
   const totalPlays       = useMemo(() => (moodData ?? []).reduce((s, d) => s + d.plays, 0), [moodData]);
@@ -718,19 +781,6 @@ export default function ArtistPortal() {
   const peakHourLabel    = HOUR_LABELS[peakHour.hour] ?? `${peakHour.hour}:00`;
   const maxGrowth        = Math.max(...(growthData ?? []).map(d => d.plays), 1);
   const maxMoodPlays     = Math.max(...(moodData ?? []).map(d => d.plays), 1);
-  const retentionCurve   = useMemo(() => {
-    if (!retentionData || retentionData.length === 0) return [100,95,88,80,73,67,62,56,51,47,43,40,36,33,30,27,25];
-    const maxBucket = Math.max(...retentionData.map(d => d.bucket));
-    const totalListeners = retentionData.reduce((s, d) => s + d.count, 0);
-    let cumulative = totalListeners;
-    const curve: number[] = [];
-    for (let b = 0; b <= Math.max(maxBucket, 16); b++) {
-      const dropOff = retentionData.find(d => d.bucket === b)?.count ?? 0;
-      cumulative = Math.max(0, cumulative - dropOff * 0.3);
-      curve.push(Math.round((cumulative / totalListeners) * 100));
-    }
-    return curve.slice(0, 17);
-  }, [retentionData]);
 
   const insights = useMemo(() => {
     const results: { type: "warning" | "tip" | "win"; text: string }[] = [];
@@ -878,30 +928,128 @@ export default function ArtistPortal() {
                 <StatCard icon={<MessageCircle />}  label="Skips"           value={fmtNum((moodData??[]).reduce((s,d)=>s+d.skips,0)) || "—"} isSmall />
               </div>
             </div>
-            <div className="p-6 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md">
-              <div className="flex items-center justify-between mb-6">
+            {/* ── Audience Retention ─────────────────────────────────────── */}
+            <div className="p-6 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md" data-testid="retention-card">
+              {/* Header */}
+              <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="font-semibold text-white">Audience Retention</h3>
-                  <p className="text-xs text-white/50">{retentionData?.length ? "Where listeners drop off — per 10 sec bucket" : "Average drop-off curve (estimated)"}</p>
+                  <p className="text-xs text-white/40 mt-0.5">See where listeners drop off</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-primary">{retentionCurve[retentionCurve.length - 1] ?? 0}%</p>
-                  <p className="text-[10px] text-white/40">Reach End</p>
-                </div>
-              </div>
-              <div className="h-40 flex items-end gap-1 w-full">
-                {retentionCurve.map((pct, i) => (
-                  <div key={i} className="flex-1 bg-primary/20 rounded-t-sm relative group cursor-pointer hover:bg-primary/50 transition-colors" style={{ height: `${Math.max(pct, 4)}%` }}>
-                    <div className="w-full h-full bg-gradient-to-t from-primary/60 to-primary/30 rounded-t-sm" />
-                    <div className="absolute -top-9 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-white text-black font-bold text-[10px] py-1 px-2 rounded-lg pointer-events-none z-10 whitespace-nowrap shadow-xl">
-                      {pct}% at {i * 10}s
-                    </div>
+                {retentionData && retentionData.length > 0 && (
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-primary">{retentionData[retentionData.length - 1]?.listeners ?? 0}%</p>
+                    <p className="text-[10px] text-white/40">reach end</p>
                   </div>
-                ))}
+                )}
               </div>
-              <div className="flex justify-between mt-3 text-[10px] font-medium text-white/40 uppercase tracking-wider">
-                <span>0:00</span><span>Mid</span><span>End</span>
-              </div>
+
+              {/* Song selector */}
+              {artistSongs.length > 0 && (
+                <div className="mb-4">
+                  <select
+                    data-testid="retention-song-select"
+                    value={retentionSongId}
+                    onChange={e => setRetentionSongId(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white/80 focus:outline-none focus:border-primary/50 appearance-none cursor-pointer"
+                  >
+                    {artistSongs.map(s => (
+                      <option key={s.id} value={s.id} className="bg-[#08080e]">
+                        {s.title} {s.status !== "approved" ? `(${s.status})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Chart area */}
+              {retentionLoading ? (
+                <div className="h-44 flex flex-col gap-2 animate-pulse">
+                  <div className="h-full w-full rounded-xl bg-white/5" />
+                  <div className="flex justify-between mt-1">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="h-3 w-8 rounded bg-white/5" />
+                    ))}
+                  </div>
+                </div>
+              ) : !retentionData || retentionData.length === 0 ? (
+                <div className="h-44 flex flex-col items-center justify-center gap-2 text-white/30">
+                  <Activity size={28} className="opacity-40" />
+                  <p className="text-xs font-medium">Not enough listens yet</p>
+                  <p className="text-[10px] text-white/20">Retention data appears after your first plays</p>
+                </div>
+              ) : (
+                <>
+                  <div className="h-44">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={retentionData} margin={{ top: 8, right: 8, left: -28, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="retentionStroke" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stopColor="#a855f7" />
+                            <stop offset="100%" stopColor="#ec4899" />
+                          </linearGradient>
+                          <linearGradient id="retentionFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#a855f7" stopOpacity={0.35} />
+                            <stop offset="100%" stopColor="#ec4899" stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis
+                          dataKey="second"
+                          tickFormatter={(s: number) => `${s}s`}
+                          tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }}
+                          axisLine={false}
+                          tickLine={false}
+                          interval="preserveStartEnd"
+                        />
+                        <YAxis
+                          domain={[0, 100]}
+                          tickFormatter={(v: number) => `${v}%`}
+                          tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }}
+                          axisLine={false}
+                          tickLine={false}
+                          ticks={[0, 25, 50, 75, 100]}
+                        />
+                        <RechartsTooltip content={<RetentionTooltip />} cursor={{ stroke: "rgba(255,255,255,0.1)", strokeWidth: 1 }} />
+                        <Area
+                          type="monotone"
+                          dataKey="listeners"
+                          stroke="url(#retentionStroke)"
+                          strokeWidth={2.5}
+                          fill="url(#retentionFill)"
+                          dot={false}
+                          activeDot={{ r: 4, fill: "#a855f7", stroke: "#fff", strokeWidth: 1.5 }}
+                        />
+                        {biggestDropPoint && (
+                          <ReferenceDot
+                            x={biggestDropPoint.second}
+                            y={biggestDropPoint.listeners}
+                            r={5}
+                            fill="#ec4899"
+                            stroke="#fff"
+                            strokeWidth={1.5}
+                            label={{ value: "▼ Drop", position: "top", fill: "#ec4899", fontSize: 8, fontWeight: 700 }}
+                          />
+                        )}
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Insight */}
+                  {retentionInsights && (
+                    <div className={cn(
+                      "mt-4 flex items-start gap-2.5 p-3 rounded-2xl text-xs",
+                      retentionInsights.type === "win"     && "bg-green-500/10 border border-green-500/20 text-green-300",
+                      retentionInsights.type === "warning" && "bg-yellow-500/10 border border-yellow-500/20 text-yellow-300",
+                      retentionInsights.type === "tip"     && "bg-primary/10 border border-primary/20 text-primary",
+                    )} data-testid="retention-insight">
+                      {retentionInsights.type === "win"     && <CheckCircle size={14} className="shrink-0 mt-0.5" />}
+                      {retentionInsights.type === "warning" && <AlertCircle  size={14} className="shrink-0 mt-0.5" />}
+                      {retentionInsights.type === "tip"     && <Lightbulb    size={14} className="shrink-0 mt-0.5" />}
+                      <span className="leading-relaxed">{retentionInsights.text}</span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             {moodData && moodData.length > 0 && (
               <div className="p-6 rounded-3xl border border-white/5 bg-white/5 backdrop-blur-md">

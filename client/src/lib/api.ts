@@ -314,7 +314,7 @@ export const api = {
 
   // Analytics
   getRetentionData: (songId: string) =>
-    request<{ bucket: number; count: number }[]>(`/api/analytics/retention/${songId}`),
+    request<{ second: number; listeners: number }[]>(`/api/analytics/retention/${songId}`),
   getMoodBreakdown: () =>
     request<{ mood: string; plays: number; completions: number; likes: number; skips: number }[]>("/api/analytics/mood-breakdown"),
   getHourlyPerformance: () =>

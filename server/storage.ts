@@ -534,18 +534,38 @@ export class DatabaseStorage implements IStorage {
 
   // ── Analytics ──────────────────────────────────────────────────────────────
 
-  /** Retention: how far users listen before dropping off, in 10-second buckets. */
-  async getAnalyticsRetention(songId: string): Promise<{ bucket: number; count: number }[]> {
+  /** Retention: cumulative % of listeners remaining at each 10-second mark. */
+  async getAnalyticsRetention(songId: string): Promise<{ second: number; listeners: number }[]> {
+    if (!songId) return [];
     const rows = await db
       .select({
         bucket: sql<number>`FLOOR(${behaviorLogs.durationSeconds}::float / 10)::integer`,
         count:  sql<number>`COUNT(*)::integer`,
       })
       .from(behaviorLogs)
-      .where(eq(behaviorLogs.songId, songId))
+      .where(and(
+        eq(behaviorLogs.songId, songId),
+        sql`${behaviorLogs.durationSeconds} IS NOT NULL AND ${behaviorLogs.durationSeconds} >= 0`,
+      ))
       .groupBy(sql`FLOOR(${behaviorLogs.durationSeconds}::float / 10)::integer`)
       .orderBy(sql`FLOOR(${behaviorLogs.durationSeconds}::float / 10)::integer`);
-    return rows;
+
+    if (rows.length === 0) return [];
+
+    const total = rows.reduce((s, r) => s + r.count, 0);
+    if (total === 0) return [];
+
+    const maxBucket = Math.max(...rows.map(r => r.bucket));
+    const bucketMap = new Map(rows.map(r => [r.bucket, r.count]));
+
+    // Cumulative: at second N, listeners = people who listened >= N seconds
+    const result: { second: number; listeners: number }[] = [];
+    let remaining = total;
+    for (let b = 0; b <= Math.max(maxBucket, 6); b++) {
+      result.push({ second: b * 10, listeners: Math.round((remaining / total) * 100) });
+      remaining = Math.max(0, remaining - (bucketMap.get(b) ?? 0));
+    }
+    return result;
   }
 
   /** Mood breakdown: aggregate engagement stats per mood across all songs. */
