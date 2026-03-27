@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Home, Search, Sparkles, TrendingUp, Mic2, PlusSquare, Shield, User } from "lucide-react";
+import { Home, Search, Sparkles, TrendingUp, Mic2, PlusSquare, Shield, User, Bell } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 
 const haptic = (ms: number | number[] = 8) => {
   try { navigator.vibrate(ms); } catch {}
@@ -14,6 +16,15 @@ export default function Navigation() {
   const { state }   = useAuth();
 
   const role = state.status === "authenticated" ? state.user.role : "user";
+  const isAuthed = state.status === "authenticated";
+
+  const { data: unreadData } = useQuery({
+    queryKey: ["notifications-unread-count"],
+    queryFn: api.getUnreadCount,
+    enabled: isAuthed,
+    refetchInterval: 30_000,
+  });
+  const unreadCount = unreadData?.count ?? 0;
 
   const baseItems = [
     { icon: Home,       label: "Feed",      href: "/" },
@@ -33,9 +44,10 @@ export default function Navigation() {
       ? [{ icon: Shield, label: "Admin", href: "/admin" }]
       : [];
 
+  const bellItem = [{ icon: Bell, label: "Alerts", href: "/notifications" }];
   const profileItem = [{ icon: User, label: "Profile", href: "/profile" }];
 
-  const navItems = [...baseItems, ...studioItem, ...adminItem, ...profileItem];
+  const navItems = [...baseItems, ...studioItem, ...adminItem, ...bellItem, ...profileItem];
 
   // Adapt icon + label sizing based on tab count
   const count = navItems.length;
@@ -90,17 +102,27 @@ export default function Navigation() {
               />
             )}
 
-            <Icon
-              size={iconSize}
-              strokeWidth={isActive ? 2.5 : 1.8}
-              className={cn(
-                "relative z-10 transition-colors duration-200",
-                isActive
-                  ? isAdmin ? "text-amber-400" : "text-primary"
-                  : "text-white/40"
+            <div className="relative">
+              <Icon
+                size={iconSize}
+                strokeWidth={isActive ? 2.5 : 1.8}
+                className={cn(
+                  "relative z-10 transition-colors duration-200",
+                  isActive
+                    ? isAdmin ? "text-amber-400" : "text-primary"
+                    : "text-white/40"
+                )}
+                style={isTapped ? { animation: "nav-bounce 0.4s cubic-bezier(0.36,0.07,0.19,0.97)" } : undefined}
+              />
+              {item.label === "Alerts" && unreadCount > 0 && (
+                <span
+                  data-testid="nav-notifications-badge"
+                  className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-0.5 bg-pink-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center shadow-[0_0_6px_2px_rgba(236,72,153,0.5)] z-20"
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
               )}
-              style={isTapped ? { animation: "nav-bounce 0.4s cubic-bezier(0.36,0.07,0.19,0.97)" } : undefined}
-            />
+            </div>
 
             <span
               className={cn(

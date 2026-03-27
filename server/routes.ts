@@ -330,7 +330,23 @@ export async function registerRoutes(
   });
 
   app.post("/api/songs/:id/like", async (req: Request, res: Response) => {
-    await storage.likeSong(userId(req), req.params.id);
+    const senderId = userId(req);
+    await storage.likeSong(senderId, req.params.id);
+    // Notification trigger (fire-and-forget)
+    const baseSongId = req.params.id.split("-seg-")[0].split("-rank-")[0];
+    storage.getSong(baseSongId).then(async (song) => {
+      if (!song || !song.uploadedBy || song.uploadedBy === senderId) return;
+      const sender = await storage.getUser(senderId);
+      if (!sender) return;
+      await storage.createNotification({
+        userId: song.uploadedBy,
+        type: "like",
+        senderId,
+        entityId: baseSongId,
+        entityType: "song",
+        message: `${sender.displayName} liked your song "${song.title}"`,
+      });
+    }).catch(() => {});
     res.json({ success: true });
   });
 
@@ -385,7 +401,22 @@ export async function registerRoutes(
   });
 
   app.post("/api/moments/:id/like", async (req: Request, res: Response) => {
-    await storage.likeMoment(userId(req), req.params.id);
+    const senderId = userId(req);
+    await storage.likeMoment(senderId, req.params.id);
+    // Notification trigger (fire-and-forget)
+    storage.getMoment(req.params.id).then(async (moment) => {
+      if (!moment || moment.userId === senderId) return;
+      const sender = await storage.getUser(senderId);
+      if (!sender) return;
+      await storage.createNotification({
+        userId: moment.userId,
+        type: "like",
+        senderId,
+        entityId: moment.id,
+        entityType: "moment",
+        message: `${sender.displayName} liked your Moment`,
+      });
+    }).catch(() => {});
     res.json({ success: true });
   });
 
@@ -418,6 +449,34 @@ export async function registerRoutes(
     });
     if (!result.success) return res.status(400).json({ message: result.error.message });
     const comment = await storage.createComment(result.data);
+    // Notification trigger (fire-and-forget)
+    const senderId = userId(req);
+    (async () => {
+      try {
+        const sender = await storage.getUser(senderId);
+        if (!sender) return;
+        if (songId) {
+          const baseSongId = songId.split("-seg-")[0].split("-rank-")[0];
+          const song = await storage.getSong(baseSongId);
+          if (song && song.uploadedBy && song.uploadedBy !== senderId) {
+            await storage.createNotification({
+              userId: song.uploadedBy, type: "comment", senderId,
+              entityId: baseSongId, entityType: "song",
+              message: `${sender.displayName} commented on your song "${song.title}"`,
+            });
+          }
+        } else if (momentId) {
+          const moment = await storage.getMoment(momentId);
+          if (moment && moment.userId !== senderId) {
+            await storage.createNotification({
+              userId: moment.userId, type: "comment", senderId,
+              entityId: moment.id, entityType: "moment",
+              message: `${sender.displayName} commented on your Moment`,
+            });
+          }
+        }
+      } catch {}
+    })();
     res.status(201).json(comment);
   });
 
@@ -1166,7 +1225,22 @@ export async function registerRoutes(
   app.post("/api/artists/follow", async (req: Request, res: Response) => {
     const { artistName } = req.body;
     if (!artistName) return res.status(400).json({ message: "artistName required" });
-    await storage.followArtist(userId(req), artistName);
+    const senderId = userId(req);
+    await storage.followArtist(senderId, artistName);
+    // Notification trigger (fire-and-forget)
+    (async () => {
+      try {
+        const sender = await storage.getUser(senderId);
+        if (!sender) return;
+        const followed = await storage.getUserByUsername(artistName);
+        if (!followed || followed.id === senderId) return;
+        await storage.createNotification({
+          userId: followed.id, type: "follow", senderId,
+          entityId: senderId, entityType: "profile",
+          message: `${sender.displayName} started following you`,
+        });
+      } catch {}
+    })();
     res.json({ success: true, following: true });
   });
 
@@ -1334,6 +1408,27 @@ export async function registerRoutes(
     const updated = await storage.updateArtistRequest(req.params.id, "rejected", String(adminNote).slice(0, 500));
     if (!updated) return res.status(404).json({ message: "Request not found" });
     return res.json({ success: true, request: updated });
+  });
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  app.get("/api/notifications", async (req: Request, res: Response) => {
+    const notifs = await storage.getNotifications(userId(req));
+    res.json(notifs);
+  });
+
+  app.get("/api/notifications/unread-count", async (req: Request, res: Response) => {
+    const count = await storage.getUnreadNotificationCount(userId(req));
+    res.json({ count });
+  });
+
+  app.patch("/api/notifications/read-all", async (req: Request, res: Response) => {
+    await storage.markAllNotificationsRead(userId(req));
+    res.json({ success: true });
+  });
+
+  app.patch("/api/notifications/:id/read", async (req: Request, res: Response) => {
+    await storage.markNotificationRead(req.params.id, userId(req));
+    res.json({ success: true });
   });
 
   return httpServer;

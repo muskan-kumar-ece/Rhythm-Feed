@@ -1,0 +1,140 @@
+Implement a full notifications system for likes, comments, and follows.
+
+---
+
+🎯 PROBLEM:
+
+- No notification system exists
+- Users don’t know when someone interacts with them
+- No engagement loop
+
+---
+
+🛠️ STEP 1: DATABASE SCHEMA
+
+Create notifications table:
+
+- id (uuid)
+- userId (receiver)
+- type ("like" | "comment" | "follow")
+- senderId
+- entityId (songId / momentId / profileId)
+- message (text)
+- isRead (boolean)
+- createdAt (timestamp)
+
+---
+
+🛠️ STEP 2: BACKEND LOGIC (AUTO CREATE)
+
+Trigger notifications when:
+
+1. Like:
+→ when user likes a song/moment
+→ notify owner
+
+2. Comment:
+→ when comment added
+→ notify owner
+
+3. Follow:
+→ when user follows another
+→ notify them
+
+---
+
+🛠️ STEP 3: BACKEND ROUTES
+
+Create APIs:
+
+1. GET /api/notifications
+→ fetch all notifications (latest first)
+
+2. PATCH /api/notifications/:id/read
+→ mark as read
+
+3. PATCH /api/notifications/read-all
+→ mark all as read
+
+---
+
+🛠️ STEP 4: FRONTEND (NOTIFICATIONS PAGE)
+
+Create:
+
+/notifications
+
+UI:
+- list of notifications
+- each item:
+  - avatar
+  - message
+  - time ("2m ago")
+  - unread highlight
+
+---
+
+🛠️ STEP 5: NAVBAR ICON
+
+Add bell icon 🔔
+
+- show unread count badge
+- clicking opens notifications page
+
+---
+
+🛠️ STEP 6: REAL-TIME FEEL (IMPORTANT)
+
+When user performs action:
+- instantly show notification (optimistic)
+
+---
+
+🛠️ STEP 7: CLICK BEHAVIOR
+
+On click:
+
+- like → open song/moment
+- comment → open comment section
+- follow → open profile
+
+---
+
+🛠️ STEP 8: UI/UX IMPROVEMENTS
+
+- unread = bold / highlighted
+- read = faded
+- show empty state:
+  "No notifications yet"
+
+---
+
+🛠️ STEP 9: OPTIONAL REAL-TIME (ADVANCED)
+
+If possible:
+- use WebSocket / polling
+- auto refresh notifications
+
+---
+
+🛠️ STEP 10: ERROR HANDLING
+
+- if fetch fails → show retry
+- if mark read fails → retry silently
+
+---
+
+📊 TEST CASES:
+
+1. Like a song → notification appears
+2. Comment → notification appears
+3. Follow → notification appears
+4. Refresh → notifications persist
+5. Click notification → opens correct page
+6. Mark read → UI updates
+
+---
+
+🎯 GOAL:
+
+Create a real engagement loop so users keep coming back.

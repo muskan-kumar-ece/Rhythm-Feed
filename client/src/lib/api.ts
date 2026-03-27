@@ -178,6 +178,24 @@ export type ApiPlaylist = {
 
 export type ApiPlaylistDetail = ApiPlaylist & { songs: ApiSong[] };
 
+export type ApiNotification = {
+  id: string;
+  userId: string;
+  type: "like" | "comment" | "follow";
+  senderId: string;
+  entityId: string | null;
+  entityType: "song" | "moment" | "profile" | null;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  sender: {
+    id: string;
+    displayName: string;
+    avatarUrl: string | null;
+    username: string;
+  };
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     credentials: "include",
@@ -457,4 +475,12 @@ export const api = {
     request<{ success: boolean }>(`/api/playlists/${playlistId}/songs`, { method: "POST", body: JSON.stringify({ songId }) }),
   removeSongFromPlaylist: (playlistId: string, songId: string) =>
     request<{ success: boolean }>(`/api/playlists/${playlistId}/songs/${songId}`, { method: "DELETE" }),
+
+  // Notifications
+  getNotifications: () => request<ApiNotification[]>("/api/notifications"),
+  getUnreadCount: () => request<{ count: number }>("/api/notifications/unread-count"),
+  markNotificationRead: (id: string) =>
+    request<{ success: boolean }>(`/api/notifications/${id}/read`, { method: "PATCH" }),
+  markAllNotificationsRead: () =>
+    request<{ success: boolean }>("/api/notifications/read-all", { method: "PATCH" }),
 };

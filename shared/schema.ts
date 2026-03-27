@@ -217,3 +217,17 @@ export type Playlist = typeof playlists.$inferSelect;
 
 export type InsertPlaylistSong = z.infer<typeof insertPlaylistSongSchema>;
 export type PlaylistSong = typeof playlistSongs.$inferSelect;
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type").notNull(),
+  senderId: varchar("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  entityId: varchar("entity_id"),
+  entityType: varchar("entity_type"),
+  message: text("message").notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export type Notification = typeof notifications.$inferSelect;

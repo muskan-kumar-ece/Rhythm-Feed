@@ -4,6 +4,7 @@ import pg from "pg";
 import {
   users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes, artistFollows,
   spotlights, spotlightLikes, artistRequests, songComments, playlists, playlistSongs,
+  notifications,
   type User, type InsertUser,
   type Song, type InsertSong,
   type Moment, type InsertMoment,
@@ -12,6 +13,7 @@ import {
   type ArtistRequest,
   type InsertSongComment, type SongComment,
   type Playlist, type PlaylistSong,
+  type Notification,
 } from "@shared/schema";
 import type { DistributionPhase } from "./discovery";
 
@@ -150,6 +152,13 @@ export interface IStorage {
   deletePlaylist(id: string, userId: string): Promise<void>;
   updatePlaylist(id: string, userId: string, data: { name?: string; description?: string }): Promise<Playlist | undefined>;
   isOwner(playlistId: string, userId: string): Promise<boolean>;
+
+  // Notifications
+  createNotification(data: { userId: string; type: string; senderId: string; entityId?: string; entityType?: string; message: string }): Promise<Notification>;
+  getNotifications(userId: string): Promise<(Notification & { sender: Pick<User, "id" | "displayName" | "avatarUrl" | "username"> })[]>;
+  markNotificationRead(id: string, userId: string): Promise<void>;
+  markAllNotificationsRead(userId: string): Promise<void>;
+  getUnreadNotificationCount(userId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -971,6 +980,74 @@ export class DatabaseStorage implements IStorage {
   async isOwner(playlistId: string, userId: string): Promise<boolean> {
     const [pl] = await db.select().from(playlists).where(and(eq(playlists.id, playlistId), eq(playlists.userId, userId)));
     return !!pl;
+  }
+
+  async createNotification(data: { userId: string; type: string; senderId: string; entityId?: string; entityType?: string; message: string }): Promise<Notification> {
+    if (data.userId === data.senderId) return {} as Notification;
+    const [notif] = await db.insert(notifications).values({
+      userId: data.userId,
+      type: data.type,
+      senderId: data.senderId,
+      entityId: data.entityId ?? null,
+      entityType: data.entityType ?? null,
+      message: data.message,
+    }).returning();
+    return notif;
+  }
+
+  async getNotifications(userId: string): Promise<(Notification & { sender: Pick<User, "id" | "displayName" | "avatarUrl" | "username"> })[]> {
+    const sender = db.select({
+      id: users.id,
+      displayName: users.displayName,
+      avatarUrl: users.avatarUrl,
+      username: users.username,
+    }).from(users).as("sender");
+
+    const rows = await db
+      .select({
+        id: notifications.id,
+        userId: notifications.userId,
+        type: notifications.type,
+        senderId: notifications.senderId,
+        entityId: notifications.entityId,
+        entityType: notifications.entityType,
+        message: notifications.message,
+        isRead: notifications.isRead,
+        createdAt: notifications.createdAt,
+        sender: {
+          id: sender.id,
+          displayName: sender.displayName,
+          avatarUrl: sender.avatarUrl,
+          username: sender.username,
+        },
+      })
+      .from(notifications)
+      .innerJoin(sender, eq(notifications.senderId, sender.id))
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(100);
+
+    return rows as (Notification & { sender: Pick<User, "id" | "displayName" | "avatarUrl" | "username"> })[];
+  }
+
+  async markNotificationRead(id: string, userId: string): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.userId, userId));
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+    return row?.count ?? 0;
   }
 }
 
