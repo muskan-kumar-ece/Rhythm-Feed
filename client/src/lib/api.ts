@@ -193,6 +193,11 @@ export const api = {
 
   // Upload (real file upload)
   uploadTrack: (formData: FormData) => upload<ApiUploadResult>("/api/upload", formData),
+  uploadProfileImage: (file: File) => {
+    const fd = new FormData();
+    fd.append("avatar", file);
+    return upload<{ avatarUrl: string }>("/api/user/profile-image", fd);
+  },
 
   // Like
   isLiked: (songId: string) => request<{ liked: boolean }>(`/api/songs/${songId}/liked`),

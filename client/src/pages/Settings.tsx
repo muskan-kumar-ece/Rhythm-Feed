@@ -5,7 +5,7 @@ import {
   ArrowLeft, User, Lock, LogOut, Music2, Bell, Smartphone,
   ChevronRight, Eye, EyeOff, Check, X, AlertCircle,
   ShieldCheck, Loader2, BarChart3, Heart, Bookmark, MessageSquare, Clock,
-  AtSign, FileText, Image, Volume2, Zap, Radio, Layers,
+  AtSign, FileText, Image, Volume2, Zap, Radio, Layers, Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -552,6 +552,30 @@ export default function Settings() {
   const { toast } = useToast();
   const authUser = state.status === "authenticated" ? state.user : null;
 
+  // ── Avatar upload ─────────────────────────────────────────────────────────
+  const avatarInputRef              = useRef<HTMLInputElement>(null);
+  const [avatarPreview,   setAvatarPreview]   = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarPreview(URL.createObjectURL(file));
+    setAvatarUploading(true);
+    try {
+      await api.uploadProfileImage(file);
+      await refresh();
+      qc.invalidateQueries({ queryKey: ["user-profile"] });
+      toast({ description: "Profile photo updated." });
+    } catch (err: any) {
+      toast({ description: err.message ?? "Upload failed.", variant: "destructive" });
+      setAvatarPreview(null);
+    } finally {
+      setAvatarUploading(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  };
+
   // ── Data fetching ────────────────────────────────────────────────────────
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ["user-profile"],
@@ -699,12 +723,49 @@ export default function Settings() {
                   loading={profileMutation.isPending} testId="bio"
                 />
               </div>
+              {/* Profile Photo Upload Row */}
               <div className="border-t border-white/6">
-                <InlineField
-                  label="Avatar URL" value={profile?.avatarUrl ?? ""} placeholder="https://..."
-                  onSave={v => profileMutation.mutateAsync({ avatarUrl: v })}
-                  loading={profileMutation.isPending} testId="avatarUrl"
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  data-testid="input-settings-avatar-file"
+                  onChange={handleAvatarChange}
                 />
+                <button
+                  data-testid="button-change-photo"
+                  type="button"
+                  onClick={() => !avatarUploading && avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="flex items-center gap-3 px-4 py-3.5 w-full text-left hover:bg-white/6 active:bg-white/10 transition-colors disabled:opacity-60"
+                >
+                  <div className="relative shrink-0">
+                    <div className="w-10 h-10 rounded-full overflow-hidden bg-primary/20 border border-white/10">
+                      <img
+                        src={avatarPreview ?? profile?.avatarUrl ?? authUser?.avatarUrl ?? ""}
+                        alt="Avatar"
+                        className={cn("w-full h-full object-cover transition-opacity duration-300", avatarUploading && "opacity-40")}
+                        onError={e => (e.currentTarget.style.display = "none")}
+                      />
+                    </div>
+                    {avatarUploading && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Loader2 size={14} className="text-primary animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white">Profile Photo</p>
+                    <p className="text-white/35 text-xs mt-0.5">
+                      {avatarUploading ? "Uploading…" : "JPG, PNG, WEBP · Max 2 MB"}
+                    </p>
+                  </div>
+                  {!avatarUploading
+                    ? <Camera size={16} className="shrink-0 text-white/40" />
+                    : <Loader2 size={15} className="shrink-0 text-primary animate-spin" />
+                  }
+                </button>
               </div>
               <SettingRow
                 icon={AtSign} label="Change Username"

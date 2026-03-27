@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2, X, Mic2, Clock, CheckCircle2, XCircle, RefreshCw, ChevronRight } from "lucide-react";
+import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2, X, Mic2, Clock, CheckCircle2, XCircle, RefreshCw, ChevronRight, Camera, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { api, ApiSong, ApiArtistRequest } from "@/lib/api";
 import { useLocation } from "wouter";
@@ -54,6 +54,30 @@ export default function Profile() {
       refetchMyRequest();
     } finally {
       setRefreshingRole(false);
+    }
+  };
+
+  // ── Avatar upload ─────────────────────────────────────────────────────────
+  const avatarInputRef            = useRef<HTMLInputElement>(null);
+  const [avatarPreview,   setAvatarPreview]   = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarPreview(URL.createObjectURL(file));
+    setAvatarUploading(true);
+    try {
+      await api.uploadProfileImage(file);
+      await refresh();
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      toast({ title: "Profile photo updated" });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message ?? "Could not upload image", variant: "destructive" });
+      setAvatarPreview(null);
+    } finally {
+      setAvatarUploading(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
     }
   };
 
@@ -135,10 +159,48 @@ export default function Profile() {
         </div>
 
         <div className="flex flex-col items-center mt-4">
+          {/* Hidden file input */}
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            data-testid="input-avatar-file"
+            onChange={handleAvatarChange}
+          />
+
           <div className="relative group">
-            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary/30 p-1">
-              <img src={user.avatarUrl} alt={user.name} className="w-full h-full rounded-full object-cover" />
-            </div>
+            {/* Avatar circle — click to upload */}
+            <button
+              data-testid="button-change-avatar"
+              type="button"
+              onClick={() => !avatarUploading && avatarInputRef.current?.click()}
+              className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary/30 p-1 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+              title="Change profile photo"
+            >
+              <div className="relative w-full h-full rounded-full overflow-hidden">
+                <img
+                  src={avatarPreview ?? user.avatarUrl}
+                  alt={user.name}
+                  className={cn("w-full h-full object-cover transition-all duration-300", avatarUploading && "opacity-40 blur-sm")}
+                />
+                {/* Camera overlay on hover */}
+                <div className={cn(
+                  "absolute inset-0 flex flex-col items-center justify-center bg-black/50 transition-opacity duration-200 rounded-full",
+                  avatarUploading ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}>
+                  {avatarUploading
+                    ? <Loader2 size={20} className="text-white animate-spin" />
+                    : <Camera size={20} className="text-white" />
+                  }
+                  {!avatarUploading && (
+                    <span className="text-white text-[9px] font-semibold mt-1 uppercase tracking-wider">Change</span>
+                  )}
+                </div>
+              </div>
+            </button>
+
+            {/* Edit profile text/bio button */}
             <button
               data-testid="button-edit-profile"
               onClick={() => {

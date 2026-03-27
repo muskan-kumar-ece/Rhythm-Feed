@@ -33,13 +33,34 @@ function userId(req: Request): string {
 
 // ── Multer — file upload config ───────────────────────────────────────────────
 
-const UPLOAD_ROOT = path.resolve("uploads");
-const AUDIO_DIR   = path.join(UPLOAD_ROOT, "audio");
-const COVER_DIR   = path.join(UPLOAD_ROOT, "covers");
-[AUDIO_DIR, COVER_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
+const UPLOAD_ROOT   = path.resolve("uploads");
+const AUDIO_DIR     = path.join(UPLOAD_ROOT, "audio");
+const COVER_DIR     = path.join(UPLOAD_ROOT, "covers");
+const PROFILE_DIR   = path.join(UPLOAD_ROOT, "profile");
+[AUDIO_DIR, COVER_DIR, PROFILE_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
 
-const MAX_AUDIO_MB = 100;
-const MAX_IMG_MB   = 8;
+const MAX_AUDIO_MB    = 100;
+const MAX_IMG_MB      = 8;
+const MAX_PROFILE_MB  = 2;
+
+// ── Profile image uploader (separate instance — 2 MB, images only) ────────────
+const profileUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, PROFILE_DIR),
+    filename:    (_req, file, cb) => {
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${unique}${path.extname(file.originalname)}`);
+    },
+  }),
+  limits: { fileSize: MAX_PROFILE_MB * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|webp|gif)/.test(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPG, PNG, WEBP, or GIF images are allowed"));
+    }
+  },
+});
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -432,6 +453,33 @@ export async function registerRoutes(
       role:        (updated as any).role ?? "user",
     });
   });
+
+  // POST /api/user/profile-image — upload profile photo
+  app.post(
+    "/api/user/profile-image",
+    requireAuth,
+    (req: Request, res: Response, next: any) => {
+      profileUpload.single("avatar")(req, res, (err: any) => {
+        if (err) {
+          const msg = err.code === "LIMIT_FILE_SIZE"
+            ? "Image must be 2 MB or smaller"
+            : (err.message ?? "Upload failed");
+          return res.status(400).json({ message: msg });
+        }
+        next();
+      });
+    },
+    async (req: Request, res: Response) => {
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) return res.status(400).json({ message: "No image file provided" });
+
+      const avatarUrl = `/uploads/profile/${file.filename}`;
+      const updated = await storage.updateUserProfile(userId(req), { avatarUrl });
+      if (!updated) return res.status(404).json({ message: "User not found" });
+
+      return res.json({ avatarUrl });
+    }
+  );
 
   app.get("/api/user/history", async (req: Request, res: Response) => {
     const logs = await storage.getUserBehaviorLogs(userId(req));
