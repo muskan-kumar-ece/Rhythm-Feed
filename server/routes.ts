@@ -22,6 +22,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
+import { randomBytes } from "crypto";
 
 // Fallback demo user id used when no auth token is present
 const DEMO_USER_ID = "demo-user-1";
@@ -306,6 +307,44 @@ export async function registerRoutes(
     // Re-issue a fresh token so the session stays alive (preserve role)
     setAuthCookie(res, { userId: user.id, username: user.username, role: (user as any).role ?? "user" });
     return res.json({ success: true });
+  });
+
+  // POST /api/auth/forgot-password — generate a reset token (returned in response for demo; real app would email it)
+  app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
+    const schema = z.object({ username: z.string().min(1) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Username is required" });
+
+    const user = await storage.getUserByUsername(parsed.data.username.toLowerCase().trim());
+    // Always return 200 to prevent username enumeration
+    if (!user) return res.json({ success: true, message: "If that account exists, a reset token has been generated." });
+
+    const token = randomBytes(32).toString("hex");
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await storage.setPasswordResetToken(user.id, token, expiry);
+
+    // In production this would be emailed. For demo, return the token directly.
+    return res.json({ success: true, resetToken: token, message: "Reset token generated. Use it within 1 hour." });
+  });
+
+  // POST /api/auth/reset-password — validate token and set a new password
+  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+    const schema = z.object({
+      token:       z.string().min(1, "Reset token is required"),
+      newPassword: z.string().min(6, "Password must be at least 6 characters"),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+
+    const { token, newPassword } = parsed.data;
+    const user = await storage.getUserByResetToken(token);
+    if (!user) return res.status(400).json({ message: "Invalid or expired reset token" });
+
+    const newHash = await hashPassword(newPassword);
+    await storage.updateUserAuth(user.id, { passwordHash: newHash });
+    await storage.clearPasswordResetToken(user.id);
+
+    return res.json({ success: true, message: "Password updated. You can now log in." });
   });
 
   // ── Songs ────────────────────────────────────────────────────────────────
@@ -1313,48 +1352,6 @@ export async function registerRoutes(
   app.get("/api/admin/retention", async (_req: Request, res: Response) => {
     const data = await storage.getAdminRetentionData();
     res.json(data);
-  });
-
-  // ── Artist follows ────────────────────────────────────────────────────────
-  app.get("/api/artists/followed", async (req: Request, res: Response) => {
-    const artistName = req.query.artistName as string;
-    if (!artistName) return res.status(400).json({ message: "artistName required" });
-    const following = await storage.isFollowingArtist(userId(req), artistName);
-    res.json({ following });
-  });
-
-  app.post("/api/artists/follow", async (req: Request, res: Response) => {
-    const { artistName } = req.body;
-    if (!artistName) return res.status(400).json({ message: "artistName required" });
-    const senderId = userId(req);
-    await storage.followArtist(senderId, artistName);
-    // Notification trigger (fire-and-forget)
-    (async () => {
-      try {
-        const sender = await storage.getUser(senderId);
-        if (!sender) return;
-        const followed = await storage.getUserByUsername(artistName);
-        if (!followed || followed.id === senderId) return;
-        await storage.createNotification({
-          userId: followed.id, type: "follow", senderId,
-          entityId: senderId, entityType: "profile",
-          message: `${sender.displayName} started following you`,
-        });
-      } catch {}
-    })();
-    res.json({ success: true, following: true });
-  });
-
-  app.delete("/api/artists/follow", async (req: Request, res: Response) => {
-    const { artistName } = req.body;
-    if (!artistName) return res.status(400).json({ message: "artistName required" });
-    await storage.unfollowArtist(userId(req), artistName);
-    res.json({ success: true, following: false });
-  });
-
-  app.get("/api/artists/following", async (req: Request, res: Response) => {
-    const artists = await storage.getFollowedArtists(userId(req));
-    res.json(artists);
   });
 
   // ── User follows (ID-based) ───────────────────────────────────────────────

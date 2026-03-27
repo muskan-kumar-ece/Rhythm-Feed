@@ -7,8 +7,8 @@ export const modules: ModuleMap = {
   "./components/mockups/core-screens/Feed.tsx": () => import("../components/mockups/core-screens/Feed.tsx"),
   "./components/mockups/core-screens/Moments.tsx": () => import("../components/mockups/core-screens/Moments.tsx"),
   "./components/mockups/core-screens/Onboarding.tsx": () => import("../components/mockups/core-screens/Onboarding.tsx"),
-  "./components/mockups/profile-screen/Profile.tsx": () => import("../components/mockups/profile-screen/Profile.tsx"),
   "./components/mockups/portal-screens/AdminDashboard.tsx": () => import("../components/mockups/portal-screens/AdminDashboard.tsx"),
   "./components/mockups/portal-screens/ArtistPortal.tsx": () => import("../components/mockups/portal-screens/ArtistPortal.tsx"),
-  "./components/mockups/portal-screens/Settings.tsx": () => import("../components/mockups/portal-screens/Settings.tsx")
+  "./components/mockups/portal-screens/Settings.tsx": () => import("../components/mockups/portal-screens/Settings.tsx"),
+  "./components/mockups/profile-screen/Profile.tsx": () => import("../components/mockups/profile-screen/Profile.tsx")
 };

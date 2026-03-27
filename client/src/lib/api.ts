@@ -374,6 +374,16 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ newUsername, currentPassword }),
     }),
+  forgotPassword: (username: string) =>
+    request<{ success: boolean; resetToken?: string; message: string }>("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ username }),
+    }),
+  resetPassword: (token: string, newPassword: string) =>
+    request<{ success: boolean; message: string }>("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword }),
+    }),
 
   // Preferences
   getPreferences: () => request<{
@@ -409,21 +419,6 @@ export const api = {
   likeSpotlight: (id: string) => request<{ success: boolean; liked: boolean }>(`/api/spotlights/${id}/like`, { method: "POST" }),
   unlikeSpotlight: (id: string) => request<{ success: boolean; liked: boolean }>(`/api/spotlights/${id}/like`, { method: "DELETE" }),
   uploadSpotlight: (formData: FormData) => upload<{ spotlight: ApiSpotlight }>("/api/spotlights/upload", formData),
-
-  // Artist follows (name-based, kept for backward compat)
-  isFollowingArtist: (artistName: string) =>
-    request<{ following: boolean }>(`/api/artists/followed?artistName=${encodeURIComponent(artistName)}`),
-  followArtist: (artistName: string) =>
-    request<{ success: boolean; following: boolean }>("/api/artists/follow", {
-      method: "POST",
-      body: JSON.stringify({ artistName }),
-    }),
-  unfollowArtist: (artistName: string) =>
-    request<{ success: boolean; following: boolean }>("/api/artists/follow", {
-      method: "DELETE",
-      body: JSON.stringify({ artistName }),
-    }),
-  getFollowedArtists: () => request<string[]>("/api/artists/following"),
 
   // User follows (ID-based — primary system)
   isFollowingUser: (userId: string) =>

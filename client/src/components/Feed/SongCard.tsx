@@ -47,11 +47,8 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
     const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
     api.isLiked(baseSongId).then(r => setIsLiked(r.liked)).catch(() => {});
     api.isSaved(baseSongId).then(r => setIsSaved(r.saved)).catch(() => {});
-    // Prefer userId-based follow; fall back to name-based for legacy/anonymous songs
     if (song.uploadedBy) {
       api.isFollowingUser(song.uploadedBy).then(r => setIsFollowing(r.following)).catch(() => {});
-    } else {
-      api.isFollowingArtist(song.artist).then(r => setIsFollowing(r.following)).catch(() => {});
     }
   }, [song.id]);
 
@@ -586,20 +583,19 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                         const newFollowing = !isFollowing;
                         haptic(newFollowing ? [20, 10, 40] : 15);
                         setIsFollowing(newFollowing);
+                        if (!song.uploadedBy) {
+                          toast({ description: "This artist hasn't joined Rytham yet" });
+                          setIsFollowing(false);
+                          return;
+                        }
                         if (newFollowing) {
                           setFollowAnimating(true);
                           setTimeout(() => setFollowAnimating(false), 600);
-                          const followAction = song.uploadedBy
-                            ? api.followUser(song.uploadedBy)
-                            : api.followArtist(song.artist);
-                          followAction
+                          api.followUser(song.uploadedBy)
                             .then(() => toast({ description: `Following ${song.artist}` }))
                             .catch(() => { setIsFollowing(false); toast({ description: "Follow failed", variant: "destructive" }); });
                         } else {
-                          const unfollowAction = song.uploadedBy
-                            ? api.unfollowUser(song.uploadedBy)
-                            : api.unfollowArtist(song.artist);
-                          unfollowAction
+                          api.unfollowUser(song.uploadedBy)
                             .then(() => toast({ description: `Unfollowed ${song.artist}` }))
                             .catch(() => { setIsFollowing(true); toast({ description: "Action failed", variant: "destructive" }); });
                         }

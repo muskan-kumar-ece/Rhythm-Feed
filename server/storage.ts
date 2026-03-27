@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, desc, and, ilike, sql, gte, ne } from "drizzle-orm";
 import pg from "pg";
 import {
-  users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes, artistFollows,
+  users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes,
   userFollows,
   spotlights, spotlightLikes, artistRequests, songComments, playlists, playlistSongs,
   notifications,
@@ -111,11 +111,10 @@ export interface IStorage {
   getAdminDailyActivity(days?: number): Promise<{ date: string; plays: number; skips: number; completions: number; likes: number }[]>;
   getAdminRetentionData(): Promise<{ totalUsers: number; day1Retained: number; day7Retained: number }>;
 
-  // Artist follows (name-based, kept for backward compat)
-  followArtist(userId: string, artistName: string): Promise<void>;
-  unfollowArtist(userId: string, artistName: string): Promise<void>;
-  isFollowingArtist(userId: string, artistName: string): Promise<boolean>;
-  getFollowedArtists(userId: string): Promise<string[]>;
+  // Password reset
+  setPasswordResetToken(userId: string, token: string, expiry: Date): Promise<void>;
+  getUserByResetToken(token: string): Promise<User | undefined>;
+  clearPasswordResetToken(userId: string): Promise<void>;
 
   // User follows (ID-based — primary follow system)
   followUser(followerId: string, followingId: string): Promise<void>;
@@ -860,34 +859,28 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  // ── Artist follows ────────────────────────────────────────────────────────
+  // ── Password reset ────────────────────────────────────────────────────────
 
-  async followArtist(userId: string, artistName: string): Promise<void> {
-    const exists = await this.isFollowingArtist(userId, artistName);
-    if (!exists) {
-      await db.insert(artistFollows).values({ userId, artistName });
-    }
+  async setPasswordResetToken(userId: string, token: string, expiry: Date): Promise<void> {
+    await db.update(users)
+      .set({ passwordResetToken: token, passwordResetExpiry: expiry })
+      .where(eq(users.id, userId));
   }
 
-  async unfollowArtist(userId: string, artistName: string): Promise<void> {
-    await db.delete(artistFollows).where(
-      and(eq(artistFollows.userId, userId), eq(artistFollows.artistName, artistName))
+  async getUserByResetToken(token: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(
+      and(
+        eq(users.passwordResetToken, token),
+        sql`${users.passwordResetExpiry} > NOW()`,
+      )
     );
+    return user;
   }
 
-  async isFollowingArtist(userId: string, artistName: string): Promise<boolean> {
-    const [row] = await db.select().from(artistFollows).where(
-      and(eq(artistFollows.userId, userId), eq(artistFollows.artistName, artistName))
-    );
-    return !!row;
-  }
-
-  async getFollowedArtists(userId: string): Promise<string[]> {
-    const rows = await db
-      .select({ artistName: artistFollows.artistName })
-      .from(artistFollows)
-      .where(eq(artistFollows.userId, userId));
-    return rows.map(r => r.artistName);
+  async clearPasswordResetToken(userId: string): Promise<void> {
+    await db.update(users)
+      .set({ passwordResetToken: null, passwordResetExpiry: null })
+      .where(eq(users.id, userId));
   }
 
   // ── User follows (ID-based) ────────────────────────────────────────────────

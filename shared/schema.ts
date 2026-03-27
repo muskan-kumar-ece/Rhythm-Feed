@@ -25,6 +25,8 @@ export const users = pgTable("users", {
     notifyNewSongs: boolean;
     notifyActivity: boolean;
   }>().notNull().default(sql`'{}'::jsonb`),
+  passwordResetToken: text("password_reset_token"),
+  passwordResetExpiry: timestamp("password_reset_expiry", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
