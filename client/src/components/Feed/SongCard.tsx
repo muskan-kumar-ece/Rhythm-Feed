@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X, UserCheck, UserPlus, Loader2, Sparkles } from "lucide-react";
-import { ApiSong, ApiMoment, ApiUser, ApiComment, api } from "@/lib/api";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X, UserCheck, UserPlus, Loader2, Sparkles, ListPlus } from "lucide-react";
+import { ApiSong, ApiMoment, ApiUser, ApiComment, ApiPlaylist, api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
@@ -73,6 +73,16 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
     }
   }, [song.audioUrl, isActive, shouldPreload, audioKey]);
   
+  // Playlist modal state
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  const [addingToPlaylist, setAddingToPlaylist] = useState<string | null>(null);
+  const { data: userPlaylists = [] } = useQuery<ApiPlaylist[]>({
+    queryKey: ["playlists"],
+    queryFn: () => api.getPlaylists(),
+    enabled: showPlaylistModal,
+    staleTime: 30_000,
+  });
+
   // Moments panel state
   const [showMomentsPanel, setShowMomentsPanel] = useState(false);
   const baseSongIdForMoments = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
@@ -310,7 +320,7 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
   const lastTapTimeRef = useRef(0);
 
   const handleContainerClick = useCallback((e: React.MouseEvent) => {
-    if (showShareModal || showCommentsModal || showMomentsPanel) return;
+    if (showShareModal || showCommentsModal || showMomentsPanel || showPlaylistModal) return;
 
     const now = Date.now();
     const WINDOW = 280;
@@ -733,6 +743,18 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
               <span className="text-xs font-medium text-white/80 drop-shadow-md">{song.saves.toLocaleString()}</span>
             </button>
 
+            {/* Add to Playlist */}
+            <button
+              onClick={(e) => { e.stopPropagation(); haptic([10, 5, 15]); setShowPlaylistModal(true); setIsPlaying(false); }}
+              className="flex flex-col items-center gap-1 group/btn active:scale-90 transition-transform"
+              data-testid="button-add-to-playlist"
+            >
+              <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
+                <ListPlus size={24} className="text-white" />
+              </div>
+              <span className="text-xs font-medium text-white/80 drop-shadow-md">Playlist</span>
+            </button>
+
             <button
               onClick={(e) => { haptic([15, 10, 20]); setShareAnimating(true); setTimeout(() => setShareAnimating(false), 500); handleShareClick(e); }}
               className="flex flex-col items-center gap-1 group/btn active:scale-90 transition-transform"
@@ -786,6 +808,87 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
           <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
       </div>
+
+      {/* Add to Playlist Modal */}
+      {showPlaylistModal && (
+        <div
+          className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-300 pb-16"
+          onClick={(e) => { e.stopPropagation(); setShowPlaylistModal(false); setIsPlaying(true); }}
+        >
+          <div
+            className="bg-[#0e0e1a] border-t border-white/10 rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[70vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-base font-bold text-white">Add to Playlist</h3>
+                <p className="text-xs text-white/40 mt-0.5 truncate max-w-[200px]">{song.title}</p>
+              </div>
+              <button
+                onClick={() => { setShowPlaylistModal(false); setIsPlaying(true); }}
+                className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center"
+              >
+                <X size={16} className="text-white/60" />
+              </button>
+            </div>
+
+            {userPlaylists.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <ListPlus size={36} className="text-white/10" />
+                <p className="text-white/30 text-sm">No playlists yet</p>
+                <p className="text-white/20 text-xs">Create a playlist from your Profile page</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {userPlaylists.map((pl: ApiPlaylist) => {
+                  const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+                  return (
+                    <button
+                      key={pl.id}
+                      data-testid={`button-playlist-add-${pl.id}`}
+                      disabled={addingToPlaylist === pl.id}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setAddingToPlaylist(pl.id);
+                        try {
+                          await api.addSongToPlaylist(pl.id, baseSongId);
+                          toast({ description: `Added to "${pl.name}"` });
+                          setShowPlaylistModal(false);
+                          setIsPlaying(true);
+                        } catch (err: any) {
+                          toast({ description: err?.message?.includes("unique") ? "Song already in playlist" : "Failed to add song", variant: "destructive" });
+                        } finally {
+                          setAddingToPlaylist(null);
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-white/5 transition-colors text-left disabled:opacity-60"
+                    >
+                      <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-white/5">
+                        {pl.coverUrl ? (
+                          <img src={pl.coverUrl} alt={pl.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-primary/20 to-black flex items-center justify-center">
+                            <ListPlus size={18} className="text-primary/40" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{pl.name}</p>
+                        <p className="text-xs text-white/40">{pl.songCount} songs</p>
+                      </div>
+                      {addingToPlaylist === pl.id ? (
+                        <Loader2 size={16} className="animate-spin text-primary flex-shrink-0" />
+                      ) : (
+                        <Plus size={18} className="text-white/40 flex-shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Create Moment Modal */}
       {showShareModal && (

@@ -1,8 +1,8 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2, X, Mic2, Clock, CheckCircle2, XCircle, RefreshCw, ChevronRight, Camera, Loader2 } from "lucide-react";
+import { Settings, Edit2, Play, Heart, Bookmark, ListMusic, History, Users, Music2, Quote, BarChart2, X, Mic2, Clock, CheckCircle2, XCircle, RefreshCw, ChevronRight, Camera, Loader2, Plus } from "lucide-react";
 import { Link } from "wouter";
-import { api, ApiSong, ApiArtistRequest } from "@/lib/api";
+import { api, ApiSong, ApiArtistRequest, ApiPlaylist } from "@/lib/api";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -118,11 +118,26 @@ export default function Profile() {
     avatarUrl: authUser?.avatarUrl   || userProfile?.avatarUrl   || "https://i.pravatar.cc/150?u=vibescroller",
   };
 
-  const playlists = [
-    { title: "Late Night Drive", count: 12, cover: allSongs[0]?.coverUrl || "" },
-    { title: "Gym Hype", count: 24, cover: allSongs[3]?.coverUrl || allSongs[0]?.coverUrl || "" },
-    { title: "Focus Mode", count: 8, cover: allSongs[1]?.coverUrl || allSongs[0]?.coverUrl || "" }
-  ].filter(p => p.cover);
+  const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [newPlaylistDesc, setNewPlaylistDesc] = useState("");
+
+  const { data: playlistsData = [], isLoading: playlistsLoading } = useQuery({
+    queryKey: ["playlists"],
+    queryFn: () => api.getPlaylists(),
+  });
+
+  const createPlaylistMutation = useMutation({
+    mutationFn: (data: { name: string; description?: string }) => api.createPlaylist(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["playlists"] });
+      toast({ description: "Playlist created!" });
+      setShowCreatePlaylist(false);
+      setNewPlaylistName("");
+      setNewPlaylistDesc("");
+    },
+    onError: () => toast({ description: "Failed to create playlist", variant: "destructive" }),
+  });
 
   const listeningHistory = historyLogs.map(log => {
     const song = allSongs.find(s => s.id === log.songId);
@@ -460,39 +475,122 @@ export default function Profile() {
         )}
 
         {activeTab === 'playlists' && (
-          <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-             {/* Create New Playlist Button */}
-             <button
-               data-testid="button-new-playlist"
-               onClick={() => toast({ title: "New Playlist", description: "Playlist creation coming soon." })}
-               className="aspect-square rounded-3xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-white/5 hover:border-primary/50 transition-all group bg-white/[0.02]"
-             >
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="grid grid-cols-2 gap-4">
+              {/* Create New Playlist Button */}
+              <button
+                data-testid="button-new-playlist"
+                onClick={() => setShowCreatePlaylist(true)}
+                className="aspect-square rounded-3xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-white/5 hover:border-primary/50 transition-all group bg-white/[0.02]"
+              >
                 <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors relative">
-                   <div className="w-6 h-0.5 bg-white/60 group-hover:bg-primary rounded-full absolute" />
-                   <div className="h-6 w-0.5 bg-white/60 group-hover:bg-primary rounded-full absolute" />
+                  <div className="w-6 h-0.5 bg-white/60 group-hover:bg-primary rounded-full absolute" />
+                  <div className="h-6 w-0.5 bg-white/60 group-hover:bg-primary rounded-full absolute" />
                 </div>
                 <p className="font-semibold text-sm text-white/60 group-hover:text-primary transition-colors">New Playlist</p>
-             </button>
+              </button>
 
-             {playlists.map((pl, i) => (
-                <div key={i} className="group cursor-pointer">
+              {/* Loading skeletons */}
+              {playlistsLoading && [...Array(2)].map((_, i) => (
+                <div key={i} className="aspect-square rounded-3xl bg-white/5 animate-pulse" />
+              ))}
+
+              {/* Real playlists */}
+              {!playlistsLoading && playlistsData.map((pl: ApiPlaylist) => (
+                <div
+                  key={pl.id}
+                  data-testid={`card-playlist-${pl.id}`}
+                  className="group cursor-pointer"
+                  onClick={() => setLocation(`/playlist/${pl.id}`)}
+                >
                   <div className="aspect-square rounded-3xl overflow-hidden relative mb-3 shadow-lg border border-white/5">
-                    <img src={pl.cover} alt={pl.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                    {pl.coverUrl ? (
+                      <img src={pl.coverUrl} alt={pl.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-primary/20 via-primary/5 to-black flex items-center justify-center">
+                        <ListMusic size={36} className="text-primary/30" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80" />
                     <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end">
-                       <p className="text-xs font-bold text-white bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-lg flex items-center gap-1.5 border border-white/10">
-                          <ListMusic size={12} className="text-primary" /> {pl.count}
-                       </p>
+                      <p className="text-xs font-bold text-white bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-lg flex items-center gap-1.5 border border-white/10">
+                        <ListMusic size={12} className="text-primary" /> {pl.songCount}
+                      </p>
                     </div>
                     <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
                       <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center shadow-[0_0_30px_rgba(var(--primary),0.6)] scale-90 group-hover:scale-100 transition-transform">
-                         <Play size={24} className="text-primary-foreground fill-current ml-1" />
+                        <Play size={24} className="text-primary-foreground fill-current ml-1" />
                       </div>
                     </div>
                   </div>
-                  <h3 className="font-semibold text-white px-1 text-sm">{pl.title}</h3>
+                  <h3 className="font-semibold text-white px-1 text-sm truncate">{pl.name}</h3>
+                  {pl.description && <p className="text-xs text-white/40 px-1 truncate">{pl.description}</p>}
                 </div>
-             ))}
+              ))}
+
+              {/* Empty state */}
+              {!playlistsLoading && playlistsData.length === 0 && (
+                <div className="col-span-1 flex flex-col items-center justify-center gap-2 py-8 text-center">
+                  <Music2 size={32} className="text-white/10" />
+                  <p className="text-white/30 text-xs">No playlists yet</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Create Playlist Modal */}
+        {showCreatePlaylist && (
+          <div
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end"
+            onClick={() => setShowCreatePlaylist(false)}
+          >
+            <div
+              className="w-full max-w-md mx-auto bg-[#0e0e1a] border-t border-white/10 rounded-t-3xl p-6 animate-in slide-in-from-bottom duration-300"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-white">New Playlist</h3>
+                <button onClick={() => setShowCreatePlaylist(false)} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
+                  <X size={16} className="text-white/60" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-white/50 font-semibold uppercase tracking-wider mb-2 block">Name</label>
+                  <input
+                    data-testid="input-playlist-name"
+                    value={newPlaylistName}
+                    onChange={e => setNewPlaylistName(e.target.value)}
+                    placeholder="My Playlist"
+                    autoFocus
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-primary/50 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 font-semibold uppercase tracking-wider mb-2 block">Description (optional)</label>
+                  <input
+                    data-testid="input-playlist-desc"
+                    value={newPlaylistDesc}
+                    onChange={e => setNewPlaylistDesc(e.target.value)}
+                    placeholder="Describe your playlist..."
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-primary/50 text-sm"
+                  />
+                </div>
+                <button
+                  data-testid="button-create-playlist"
+                  onClick={() => {
+                    if (!newPlaylistName.trim()) { toast({ description: "Name is required", variant: "destructive" }); return; }
+                    createPlaylistMutation.mutate({ name: newPlaylistName.trim(), description: newPlaylistDesc.trim() });
+                  }}
+                  disabled={createPlaylistMutation.isPending}
+                  className="w-full py-3.5 rounded-2xl bg-primary font-bold text-white text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {createPlaylistMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  Create Playlist
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

@@ -165,6 +165,19 @@ export type ApiComment = {
   user: ApiUser;
 };
 
+export type ApiPlaylist = {
+  id: string;
+  userId: string;
+  name: string;
+  description: string;
+  coverImage: string | null;
+  coverUrl: string | null;
+  songCount: number;
+  createdAt: string;
+};
+
+export type ApiPlaylistDetail = ApiPlaylist & { songs: ApiSong[] };
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     credentials: "include",
@@ -426,4 +439,18 @@ export const api = {
   },
   createComment: (data: { content: string; songId?: string; momentId?: string }) =>
     request<ApiComment>("/api/comments", { method: "POST", body: JSON.stringify(data) }),
+
+  // Playlists
+  getPlaylists: () => request<ApiPlaylist[]>("/api/playlists"),
+  getPlaylist: (id: string) => request<ApiPlaylistDetail>(`/api/playlists/${id}`),
+  createPlaylist: (data: { name: string; description?: string }) =>
+    request<ApiPlaylist>("/api/playlists", { method: "POST", body: JSON.stringify(data) }),
+  updatePlaylist: (id: string, data: { name?: string; description?: string }) =>
+    request<ApiPlaylist>(`/api/playlists/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deletePlaylist: (id: string) =>
+    request<{ success: boolean }>(`/api/playlists/${id}`, { method: "DELETE" }),
+  addSongToPlaylist: (playlistId: string, songId: string) =>
+    request<{ success: boolean }>(`/api/playlists/${playlistId}/songs`, { method: "POST", body: JSON.stringify({ songId }) }),
+  removeSongFromPlaylist: (playlistId: string, songId: string) =>
+    request<{ success: boolean }>(`/api/playlists/${playlistId}/songs/${songId}`, { method: "DELETE" }),
 };

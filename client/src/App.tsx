@@ -18,6 +18,7 @@ import Spotlight from "@/pages/Spotlight";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import Settings from "@/pages/Settings";
+import PlaylistPage from "@/pages/PlaylistPage";
 import Navigation from "@/components/Navigation";
 
 const AUTH_ROUTES = ["/login", "/signup"];
@@ -41,6 +42,7 @@ function AppRoutes() {
         <Route path="/profile" component={Profile} />
         <Route path="/settings" component={Settings} />
         <Route path="/spotlight" component={Spotlight} />
+        <Route path="/playlist/:id" component={PlaylistPage} />
 
         {/* Artist-only routes */}
         <Route path="/artist/:tab?">

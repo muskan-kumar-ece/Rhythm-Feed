@@ -428,6 +428,54 @@ export async function registerRoutes(
     res.status(400).json({ message: "songId or momentId query param required" });
   });
 
+  // ── Playlists ────────────────────────────────────────────────────────────
+  app.get("/api/playlists", async (req: Request, res: Response) => {
+    const uid = userId(req);
+    const pls = await storage.getUserPlaylists(uid);
+    res.json(pls);
+  });
+
+  app.post("/api/playlists", async (req: Request, res: Response) => {
+    const { name, description } = req.body;
+    if (!name?.trim()) return res.status(400).json({ message: "name is required" });
+    const pl = await storage.createPlaylist(userId(req), name.trim(), description?.trim() ?? "");
+    res.status(201).json(pl);
+  });
+
+  app.get("/api/playlists/:id", async (req: Request, res: Response) => {
+    const pl = await storage.getPlaylist(req.params.id);
+    if (!pl) return res.status(404).json({ message: "Playlist not found" });
+    res.json(pl);
+  });
+
+  app.patch("/api/playlists/:id", async (req: Request, res: Response) => {
+    const { name, description } = req.body;
+    const updated = await storage.updatePlaylist(req.params.id, userId(req), { name, description });
+    if (!updated) return res.status(404).json({ message: "Playlist not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/playlists/:id", async (req: Request, res: Response) => {
+    await storage.deletePlaylist(req.params.id, userId(req));
+    res.json({ success: true });
+  });
+
+  app.post("/api/playlists/:id/songs", async (req: Request, res: Response) => {
+    const { songId } = req.body;
+    if (!songId) return res.status(400).json({ message: "songId is required" });
+    const owner = await storage.isOwner(req.params.id, userId(req));
+    if (!owner) return res.status(403).json({ message: "Not your playlist" });
+    await storage.addSongToPlaylist(req.params.id, songId);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/playlists/:id/songs/:songId", async (req: Request, res: Response) => {
+    const owner = await storage.isOwner(req.params.id, userId(req));
+    if (!owner) return res.status(403).json({ message: "Not your playlist" });
+    await storage.removeSongFromPlaylist(req.params.id, req.params.songId);
+    res.json({ success: true });
+  });
+
   // ── Behavior Logging ─────────────────────────────────────────────────────
   app.post("/api/behavior", async (req: Request, res: Response) => {
     const result = insertBehaviorLogSchema.safeParse({ ...req.body, userId: userId(req) });

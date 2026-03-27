@@ -156,6 +156,22 @@ export const artistRequests = pgTable("artist_requests", {
   reviewedAt: timestamp("reviewed_at"),
 });
 
+export const playlists = pgTable("playlists", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  coverImage: text("cover_image"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const playlistSongs = pgTable("playlist_songs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  playlistId: varchar("playlist_id").notNull().references(() => playlists.id),
+  songId: varchar("song_id").notNull().references(() => songs.id),
+  addedAt: timestamp("added_at").notNull().default(sql`now()`),
+});
+
 export const songComments = pgTable("song_comments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
@@ -172,6 +188,8 @@ export const insertBehaviorLogSchema = createInsertSchema(behaviorLogs).omit({ i
 export const insertSpotlightSchema = createInsertSchema(spotlights).omit({ id: true, createdAt: true });
 export const insertArtistRequestSchema = createInsertSchema(artistRequests).omit({ id: true, createdAt: true });
 export const insertSongCommentSchema = createInsertSchema(songComments).omit({ id: true, createdAt: true });
+export const insertPlaylistSchema = createInsertSchema(playlists).omit({ id: true, createdAt: true });
+export const insertPlaylistSongSchema = createInsertSchema(playlistSongs).omit({ id: true, addedAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -193,3 +211,9 @@ export type ArtistRequest = typeof artistRequests.$inferSelect;
 
 export type InsertSongComment = z.infer<typeof insertSongCommentSchema>;
 export type SongComment = typeof songComments.$inferSelect;
+
+export type InsertPlaylist = z.infer<typeof insertPlaylistSchema>;
+export type Playlist = typeof playlists.$inferSelect;
+
+export type InsertPlaylistSong = z.infer<typeof insertPlaylistSongSchema>;
+export type PlaylistSong = typeof playlistSongs.$inferSelect;

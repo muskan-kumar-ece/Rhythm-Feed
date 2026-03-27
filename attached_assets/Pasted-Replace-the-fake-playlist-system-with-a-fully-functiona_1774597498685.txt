@@ -1,0 +1,148 @@
+Replace the fake playlist system with a fully functional real playlist feature.
+
+---
+
+🎯 PROBLEM:
+
+- Playlist tab shows hardcoded data
+- Users cannot create, edit, or manage playlists
+- No real backend connection
+
+---
+
+🛠️ STEP 1: DATABASE SCHEMA
+
+Create tables:
+
+1. playlists
+- id (uuid)
+- userId (owner)
+- name
+- description
+- coverImage (optional)
+- createdAt
+
+2. playlistSongs
+- id
+- playlistId
+- songId
+- addedAt
+
+---
+
+🛠️ STEP 2: BACKEND ROUTES
+
+Create APIs:
+
+1. POST /api/playlists
+→ create playlist
+
+2. GET /api/playlists
+→ get user playlists
+
+3. GET /api/playlists/:id
+→ get playlist with songs
+
+4. POST /api/playlists/:id/add-song
+→ add song to playlist
+
+5. DELETE /api/playlists/:id/remove-song/:songId
+→ remove song
+
+6. DELETE /api/playlists/:id
+→ delete playlist
+
+7. PATCH /api/playlists/:id
+→ update name/description
+
+---
+
+🛠️ STEP 3: FRONTEND (PROFILE PAGE)
+
+Replace fake playlists with real data:
+
+- fetch playlists from API
+- display list:
+  - playlist name
+  - number of songs
+  - cover image (use first song cover if none)
+
+---
+
+🛠️ STEP 4: CREATE PLAYLIST UI
+
+Add:
+- “Create Playlist” button
+
+Modal:
+- name input
+- description input
+- create button
+
+---
+
+🛠️ STEP 5: ADD SONG TO PLAYLIST
+
+In SongCard:
+
+- add "Add to Playlist" button
+
+On click:
+- show user playlists
+- allow selection
+- call API to add song
+
+---
+
+🛠️ STEP 6: PLAYLIST VIEW PAGE
+
+Create new screen:
+
+/playlist/:id
+
+Show:
+- playlist name
+- songs list
+- play all button
+- individual song play
+
+---
+
+🛠️ STEP 7: DELETE & EDIT
+
+- allow delete playlist
+- allow rename/edit description
+
+---
+
+🛠️ STEP 8: UX IMPROVEMENTS
+
+- show toast:
+  "Added to playlist"
+- prevent duplicate songs
+- show empty state:
+  "No songs yet — add some 🎧"
+
+---
+
+🛠️ STEP 9: PERFORMANCE
+
+- lazy load songs
+- cache playlist data
+
+---
+
+📊 TEST CASES:
+
+1. Create playlist → appears instantly
+2. Add song → visible inside playlist
+3. Refresh → playlist persists
+4. Remove song → removed correctly
+5. Delete playlist → removed from UI
+6. Open playlist → songs playable
+
+---
+
+🎯 GOAL:
+
+Make playlists a real, usable, persistent feature — not just UI.

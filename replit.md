@@ -12,7 +12,7 @@ A mobile-style vertical music discovery web app (Resso/TikTok-inspired) with an 
 
 ```
 client/src/
-  pages/         – Feed, Trending, Moments, Profile, ArtistPortal, AdminDashboard, Spotlight, Login, Signup
+  pages/         – Feed, Trending, Moments, Profile, ArtistPortal, AdminDashboard, Spotlight, Login, Signup, PlaylistPage
   components/    – Feed/SongCard (main feed card), Navigation, AuthGuard, RoleGuard
   contexts/      – AuthContext (JWT cookie auth state, includes role)
   lib/           – api.ts, recommendation.ts, tracking.ts, dummyData.ts

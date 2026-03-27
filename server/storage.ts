@@ -3,7 +3,7 @@ import { eq, desc, and, ilike, sql, gte, ne } from "drizzle-orm";
 import pg from "pg";
 import {
   users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes, artistFollows,
-  spotlights, spotlightLikes, artistRequests, songComments,
+  spotlights, spotlightLikes, artistRequests, songComments, playlists, playlistSongs,
   type User, type InsertUser,
   type Song, type InsertSong,
   type Moment, type InsertMoment,
@@ -11,6 +11,7 @@ import {
   type Spotlight, type InsertSpotlight,
   type ArtistRequest,
   type InsertSongComment, type SongComment,
+  type Playlist, type PlaylistSong,
 } from "@shared/schema";
 import type { DistributionPhase } from "./discovery";
 
@@ -138,6 +139,16 @@ export interface IStorage {
   createComment(data: InsertSongComment): Promise<SongComment & { user: User }>;
   getCommentsBySong(songId: string): Promise<(SongComment & { user: User })[]>;
   getCommentsByMoment(momentId: string): Promise<(SongComment & { user: User })[]>;
+
+  // Playlists
+  createPlaylist(userId: string, name: string, description?: string): Promise<Playlist>;
+  getUserPlaylists(userId: string): Promise<(Playlist & { songCount: number; coverUrl: string | null })[]>;
+  getPlaylist(id: string): Promise<(Playlist & { songs: Song[] }) | undefined>;
+  addSongToPlaylist(playlistId: string, songId: string): Promise<void>;
+  removeSongFromPlaylist(playlistId: string, songId: string): Promise<void>;
+  deletePlaylist(id: string, userId: string): Promise<void>;
+  updatePlaylist(id: string, userId: string, data: { name?: string; description?: string }): Promise<Playlist | undefined>;
+  isOwner(playlistId: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -876,6 +887,79 @@ export class DatabaseStorage implements IStorage {
       .where(eq(songComments.momentId, momentId))
       .orderBy(desc(songComments.createdAt));
     return rows.map(r => ({ ...r.comment, user: r.user }));
+  }
+
+  async createPlaylist(userId: string, name: string, description = ""): Promise<Playlist> {
+    const [pl] = await db.insert(playlists).values({ userId, name, description }).returning();
+    return pl;
+  }
+
+  async getUserPlaylists(userId: string): Promise<(Playlist & { songCount: number; coverUrl: string | null })[]> {
+    const userPlaylists = await db
+      .select()
+      .from(playlists)
+      .where(eq(playlists.userId, userId))
+      .orderBy(desc(playlists.createdAt));
+
+    return Promise.all(userPlaylists.map(async (pl) => {
+      const [countRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(playlistSongs)
+        .where(eq(playlistSongs.playlistId, pl.id));
+      // Use first song cover as default cover
+      const [firstSongRow] = await db
+        .select({ coverUrl: songs.coverUrl })
+        .from(playlistSongs)
+        .innerJoin(songs, eq(playlistSongs.songId, songs.id))
+        .where(eq(playlistSongs.playlistId, pl.id))
+        .orderBy(playlistSongs.addedAt)
+        .limit(1);
+      return {
+        ...pl,
+        songCount: Number(countRow?.count ?? 0),
+        coverUrl: pl.coverImage ?? firstSongRow?.coverUrl ?? null,
+      };
+    }));
+  }
+
+  async getPlaylist(id: string): Promise<(Playlist & { songs: Song[] }) | undefined> {
+    const [pl] = await db.select().from(playlists).where(eq(playlists.id, id));
+    if (!pl) return undefined;
+    const rows = await db
+      .select({ song: songs })
+      .from(playlistSongs)
+      .innerJoin(songs, eq(playlistSongs.songId, songs.id))
+      .where(eq(playlistSongs.playlistId, id))
+      .orderBy(playlistSongs.addedAt);
+    return { ...pl, songs: rows.map(r => r.song) };
+  }
+
+  async addSongToPlaylist(playlistId: string, songId: string): Promise<void> {
+    await db.insert(playlistSongs).values({ playlistId, songId }).onConflictDoNothing();
+  }
+
+  async removeSongFromPlaylist(playlistId: string, songId: string): Promise<void> {
+    await db.delete(playlistSongs).where(
+      and(eq(playlistSongs.playlistId, playlistId), eq(playlistSongs.songId, songId))
+    );
+  }
+
+  async deletePlaylist(id: string, userId: string): Promise<void> {
+    await db.delete(playlists).where(and(eq(playlists.id, id), eq(playlists.userId, userId)));
+  }
+
+  async updatePlaylist(id: string, userId: string, data: { name?: string; description?: string }): Promise<Playlist | undefined> {
+    const [updated] = await db
+      .update(playlists)
+      .set({ ...(data.name !== undefined && { name: data.name }), ...(data.description !== undefined && { description: data.description }) })
+      .where(and(eq(playlists.id, id), eq(playlists.userId, userId)))
+      .returning();
+    return updated;
+  }
+
+  async isOwner(playlistId: string, userId: string): Promise<boolean> {
+    const [pl] = await db.select().from(playlists).where(and(eq(playlists.id, playlistId), eq(playlists.userId, userId)));
+    return !!pl;
   }
 }
 
