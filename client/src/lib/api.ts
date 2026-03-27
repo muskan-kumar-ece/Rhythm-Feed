@@ -133,6 +133,7 @@ export type ApiUploadResult = {
     aiTags: string[];
     estimatedBpm: number;
   };
+  autoApproved: boolean;
 };
 
 export type ApiSpotlight = {

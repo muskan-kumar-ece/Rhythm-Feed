@@ -63,6 +63,8 @@ export const songs = pgTable("songs", {
   status: text("status").notNull().default("approved"),
   aiTags: jsonb("ai_tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   rejectionReason: text("rejection_reason"),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
 });
 
 export const moments = pgTable("moments", {

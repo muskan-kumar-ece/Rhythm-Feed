@@ -610,17 +610,24 @@ export async function registerRoutes(
       const moodTags = mood ? [mood, ...analysis.moodCategories.filter(m => m !== mood)] : analysis.moodCategories;
       const uniqueMoods = Array.from(new Set(moodTags));
 
+      const uploaderRole = (req as any).user?.role ?? "artist";
+      const isAdmin = uploaderRole === "admin";
+      const uploaderUserId = userId(req);
+
       const song = await storage.createSong({
         title,
         artist,
         coverUrl,
         audioUrl,
         mood,
-        status: "pending",
+        // Admins bypass moderation — their uploads are live immediately
+        status: isAdmin ? "approved" : "pending",
+        approvedBy: isAdmin ? uploaderUserId : null,
+        approvedAt: isAdmin ? new Date() : null,
         aiTags: analysis.aiTags,
         distributionScore: NEW_SONG_SCORE,
         distributionPhase: NEW_SONG_PHASE,
-        uploadedBy: userId(req),
+        uploadedBy: uploaderUserId,
         features: {
           tempo:  analysis.tempo,
           energy: analysis.energy,
@@ -634,7 +641,11 @@ export async function registerRoutes(
         lyrics: parsedLyrics,
       });
 
-      res.status(201).json({ song, analysis });
+      res.status(201).json({
+        song,
+        analysis,
+        autoApproved: isAdmin,
+      });
     }
   );
 

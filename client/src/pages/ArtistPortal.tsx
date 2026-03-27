@@ -319,33 +319,55 @@ function TrackRow({ song, onEdit, onRefresh }: { song: ApiSong; onEdit: (s: ApiS
 
 // ── Upload Success Screen ─────────────────────────────────────────────────────
 
-function UploadSuccess({ song, analysis, onDone }: {
+function UploadSuccess({ song, analysis, autoApproved, onDone }: {
   song: ApiSong;
   analysis: { tempo: string; energy: string; aiTags: string[]; estimatedBpm: number };
+  autoApproved: boolean;
   onDone: () => void;
 }) {
+  const glowColor  = autoApproved ? "bg-primary/15"   : "bg-green-500/15";
+  const ringColor  = autoApproved ? "bg-primary/20 border-primary/40"   : "bg-green-500/20 border-green-500/40";
+  const iconColor  = autoApproved ? "text-primary"     : "text-green-400";
+  const labelColor = autoApproved ? "text-primary"     : "text-green-400";
+
+  const steps = autoApproved ? [
+    { icon: <Sparkles size={14} />, text: "AI tags & metadata extracted",   done: true },
+    { icon: <Check size={14} />,    text: "Auto-approved — live in feed now", done: true },
+    { icon: <Zap size={14} />,      text: "Discovery boost activated",       done: true },
+    { icon: <TrendingUp size={14} />, text: "Smart distribution begins",     done: true },
+  ] : [
+    { icon: <Shield size={14} />,    text: "Sent to moderation queue",          done: true },
+    { icon: <Sparkles size={14} />,  text: "AI tags & metadata extracted",      done: true },
+    { icon: <Zap size={14} />,       text: "Discovery boost activated on approval", done: false },
+    { icon: <TrendingUp size={14} />, text: "Smart distribution begins",        done: false },
+  ];
+
   return (
     <div className="flex flex-col items-center text-center gap-6 py-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="relative">
-        <div className="absolute inset-0 scale-125 rounded-full bg-green-500/15 blur-xl" />
-        <div className="w-20 h-20 rounded-full bg-green-500/20 border border-green-500/40 flex items-center justify-center relative z-10">
-          <CheckCircle size={36} className="text-green-400" />
+        <div className={`absolute inset-0 scale-125 rounded-full ${glowColor} blur-xl`} />
+        <div className={`w-20 h-20 rounded-full ${ringColor} border flex items-center justify-center relative z-10`}>
+          <CheckCircle size={36} className={iconColor} />
         </div>
       </div>
 
       <div>
-        <p className="text-xs uppercase tracking-widest text-green-400 font-bold mb-2">Track Submitted</p>
+        <p className={`text-xs uppercase tracking-widest font-bold mb-2 ${labelColor}`}>
+          {autoApproved ? "Track Published" : "Track Submitted"}
+        </p>
         <h2 className="text-2xl font-display font-bold text-white tracking-tight mb-1">"{song.title}"</h2>
-        <p className="text-white/40 text-sm">is under review</p>
+        <p className="text-white/40 text-sm">
+          {autoApproved ? "is live in the feed now" : "is under review"}
+        </p>
       </div>
 
       <div className="w-full max-w-xs p-4 rounded-2xl bg-white/5 border border-white/5 text-left space-y-3">
         <p className="text-xs text-white/50 uppercase tracking-wider font-semibold">AI Analysis Results</p>
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: "Tempo",   value: analysis.tempo.charAt(0).toUpperCase()+analysis.tempo.slice(1) },
-            { label: "Energy",  value: analysis.energy.charAt(0).toUpperCase()+analysis.energy.slice(1) },
-            { label: "Est. BPM",value: String(analysis.estimatedBpm) },
+            { label: "Tempo",    value: analysis.tempo.charAt(0).toUpperCase()+analysis.tempo.slice(1) },
+            { label: "Energy",   value: analysis.energy.charAt(0).toUpperCase()+analysis.energy.slice(1) },
+            { label: "Est. BPM", value: String(analysis.estimatedBpm) },
           ].map(({ label, value }) => (
             <div key={label} className="p-2 rounded-xl bg-white/5 text-center">
               <p className="text-xs font-bold text-white">{value}</p>
@@ -364,15 +386,10 @@ function UploadSuccess({ song, analysis, onDone }: {
       </div>
 
       <div className="w-full max-w-xs space-y-2 text-left">
-        {[
-          { icon: <Shield size={14} />,        text: "Sent to moderation queue", done: true },
-          { icon: <Sparkles size={14} />,      text: "AI tags & metadata extracted", done: true },
-          { icon: <Zap size={14} />,           text: "Discovery boost activated on approval", done: false },
-          { icon: <TrendingUp size={14} />,    text: "Smart distribution begins", done: false },
-        ].map((step, i) => (
+        {steps.map((step, i) => (
           <div key={i} className="flex items-center gap-3">
             <div className={cn("w-6 h-6 rounded-full flex items-center justify-center shrink-0",
-              step.done ? "bg-green-500/20 text-green-400" : "bg-white/5 text-white/30"
+              step.done ? (autoApproved ? "bg-primary/20 text-primary" : "bg-green-500/20 text-green-400") : "bg-white/5 text-white/30"
             )}>
               {step.done ? <Check size={12} /> : step.icon}
             </div>
@@ -386,7 +403,7 @@ function UploadSuccess({ song, analysis, onDone }: {
         className="w-full max-w-xs bg-primary text-white font-bold rounded-xl py-4 hover:bg-primary/90 transition-all active:scale-[0.98]"
         data-testid="button-done-upload"
       >
-        View My Tracks
+        {autoApproved ? "View Live Tracks" : "View My Tracks"}
       </button>
     </div>
   );
@@ -394,7 +411,7 @@ function UploadSuccess({ song, analysis, onDone }: {
 
 // ── Upload Form ───────────────────────────────────────────────────────────────
 
-function UploadForm({ onSuccess }: { onSuccess: (song: ApiSong, analysis: ApiUploadResult["analysis"]) => void }) {
+function UploadForm({ onSuccess }: { onSuccess: (song: ApiSong, analysis: ApiUploadResult["analysis"], autoApproved: boolean) => void }) {
   const [title,      setTitle]      = useState("");
   const [artist,     setArtist]     = useState("Local Artist");
   const [genre,      setGenre]      = useState("Pop");
@@ -480,7 +497,7 @@ function UploadForm({ onSuccess }: { onSuccess: (song: ApiSong, analysis: ApiUpl
       clearInterval(progressTimer);
       setProgress(100);
       setTimeout(() => {
-        onSuccess(result.song, result.analysis);
+        onSuccess(result.song, result.analysis, result.autoApproved ?? false);
       }, 400);
     } catch (err: any) {
       clearInterval(progressTimer);
@@ -673,7 +690,7 @@ export default function ArtistPortal() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Upload success state
+  // Upload success state (includes autoApproved flag from backend)
   const [uploadResult, setUploadResult] = useState<ApiUploadResult | null>(null);
 
   // Edit modal
@@ -828,6 +845,7 @@ export default function ArtistPortal() {
             <UploadSuccess
               song={uploadResult.song}
               analysis={uploadResult.analysis}
+              autoApproved={uploadResult.autoApproved ?? false}
               onDone={() => {
                 setUploadResult(null);
                 setActiveTab("tracks");
@@ -836,8 +854,8 @@ export default function ArtistPortal() {
             />
           ) : (
             <UploadForm
-              onSuccess={(song, analysis) => {
-                setUploadResult({ song, analysis });
+              onSuccess={(song, analysis, autoApproved) => {
+                setUploadResult({ song, analysis, autoApproved });
                 queryClient.invalidateQueries({ queryKey: ["artist-songs"] });
               }}
             />
