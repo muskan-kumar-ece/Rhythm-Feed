@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Play, ListMusic, Music2, Pencil, Trash2, Loader2, Check, X } from "lucide-react";
+import { ArrowLeft, Play, ListMusic, Music2, Pencil, Trash2, Loader2, Check, X, Camera } from "lucide-react";
 import { api, ApiPlaylistDetail, ApiSong } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,8 @@ export default function PlaylistPage() {
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const { data: playlist, isLoading } = useQuery({
     queryKey: ["playlist", params.id],
@@ -101,8 +103,35 @@ export default function PlaylistPage() {
     setEditMode(true);
   };
 
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCoverUploading(true);
+    try {
+      await api.uploadPlaylistCover(params.id, file);
+      queryClient.invalidateQueries({ queryKey: ["playlist", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["playlists"] });
+      toast({ description: "Cover updated" });
+    } catch {
+      toast({ description: "Failed to upload cover", variant: "destructive" });
+    } finally {
+      setCoverUploading(false);
+      if (coverInputRef.current) coverInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#08080e] pb-24 overflow-y-auto">
+      {/* Hidden file input for cover upload */}
+      <input
+        ref={coverInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        data-testid="input-playlist-cover"
+        onChange={handleCoverUpload}
+      />
+
       {/* Header Banner */}
       <div className="relative h-64 overflow-hidden">
         {coverUrl ? (
@@ -123,8 +152,20 @@ export default function PlaylistPage() {
           <ArrowLeft size={20} className="text-white" />
         </button>
 
-        {/* Edit + Delete */}
+        {/* Edit + Delete + Cover Upload */}
         <div className="absolute top-4 right-4 flex gap-2 z-10">
+          <button
+            data-testid="button-upload-cover-playlist"
+            onClick={() => coverInputRef.current?.click()}
+            disabled={coverUploading}
+            className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center border border-white/10 disabled:opacity-50"
+            title="Change cover"
+          >
+            {coverUploading
+              ? <Loader2 size={16} className="animate-spin text-primary" />
+              : <Camera size={16} className="text-white" />
+            }
+          </button>
           <button
             data-testid="button-edit-playlist"
             onClick={startEdit}

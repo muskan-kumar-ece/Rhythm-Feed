@@ -269,7 +269,6 @@ export const api = {
     request<ApiMoment>("/api/moments", { method: "POST", body: JSON.stringify(data) }),
   likeMoment: (momentId: string) => request<{ success: boolean }>(`/api/moments/${momentId}/like`, { method: "POST" }),
   unlikeMoment: (momentId: string) => request<{ success: boolean }>(`/api/moments/${momentId}/like`, { method: "DELETE" }),
-  commentMoment: (momentId: string) => request<{ success: boolean }>(`/api/moments/${momentId}/comment`, { method: "POST" }),
   isMomentLiked: (momentId: string) => request<{ liked: boolean }>(`/api/moments/${momentId}/liked`),
 
   // User
@@ -489,6 +488,11 @@ export const api = {
     request<ApiPlaylist>(`/api/playlists/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deletePlaylist: (id: string) =>
     request<{ success: boolean }>(`/api/playlists/${id}`, { method: "DELETE" }),
+  uploadPlaylistCover: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append("cover", file);
+    return upload<{ success: boolean; coverUrl: string }>(`/api/playlists/${id}/cover`, fd);
+  },
   addSongToPlaylist: (playlistId: string, songId: string) =>
     request<{ success: boolean }>(`/api/playlists/${playlistId}/songs`, { method: "POST", body: JSON.stringify({ songId }) }),
   removeSongFromPlaylist: (playlistId: string, songId: string) =>

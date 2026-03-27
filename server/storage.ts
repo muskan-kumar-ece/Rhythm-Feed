@@ -159,6 +159,7 @@ export interface IStorage {
   removeSongFromPlaylist(playlistId: string, songId: string): Promise<void>;
   deletePlaylist(id: string, userId: string): Promise<void>;
   updatePlaylist(id: string, userId: string, data: { name?: string; description?: string }): Promise<Playlist | undefined>;
+  updatePlaylistCover(id: string, userId: string, coverUrl: string): Promise<void>;
   isOwner(playlistId: string, userId: string): Promise<boolean>;
 
   // Notifications
@@ -1045,7 +1046,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getPlaylist(id: string): Promise<(Playlist & { songs: Song[] }) | undefined> {
+  async getPlaylist(id: string): Promise<(Playlist & { songs: Song[]; coverUrl: string | null }) | undefined> {
     const [pl] = await db.select().from(playlists).where(eq(playlists.id, id));
     if (!pl) return undefined;
     const rows = await db
@@ -1054,7 +1055,10 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(songs, eq(playlistSongs.songId, songs.id))
       .where(eq(playlistSongs.playlistId, id))
       .orderBy(playlistSongs.addedAt);
-    return { ...pl, songs: rows.map(r => r.song) };
+    const songList = rows.map(r => r.song);
+    // Compute coverUrl: prefer explicit coverImage, then first song's cover
+    const coverUrl = pl.coverImage ?? songList[0]?.coverUrl ?? null;
+    return { ...pl, songs: songList, coverUrl };
   }
 
   async addSongToPlaylist(playlistId: string, songId: string): Promise<void> {
@@ -1078,6 +1082,13 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(playlists.id, id), eq(playlists.userId, userId)))
       .returning();
     return updated;
+  }
+
+  async updatePlaylistCover(id: string, userId: string, coverUrl: string): Promise<void> {
+    await db
+      .update(playlists)
+      .set({ coverImage: coverUrl })
+      .where(and(eq(playlists.id, id), eq(playlists.userId, userId)));
   }
 
   async isOwner(playlistId: string, userId: string): Promise<boolean> {

@@ -63,6 +63,22 @@ const profileUpload = multer({
   },
 });
 
+// Image-only multer for playlist cover images — saves to covers/
+const coverUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, COVER_DIR),
+    filename:    (_req, file, cb) => {
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${unique}${path.extname(file.originalname)}`);
+    },
+  }),
+  limits: { fileSize: MAX_IMG_MB * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|webp|gif)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Only JPG, PNG, WEBP, or GIF images are allowed"));
+  },
+});
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
@@ -511,6 +527,10 @@ export async function registerRoutes(
     });
     if (!result.success) return res.status(400).json({ message: result.error.message });
     const comment = await storage.createComment(result.data);
+    // Sync moment comment counter when commenting on a moment
+    if (momentId) {
+      storage.commentMoment(momentId).catch(() => {});
+    }
     // Notification trigger (fire-and-forget)
     const senderId = userId(req);
     (async () => {
@@ -602,6 +622,25 @@ export async function registerRoutes(
     await storage.removeSongFromPlaylist(req.params.id, req.params.songId);
     res.json({ success: true });
   });
+
+  // POST /api/playlists/:id/cover — upload a cover image for a playlist
+  app.post(
+    "/api/playlists/:id/cover",
+    requireAuth,
+    coverUpload.single("cover"),
+    async (req: Request, res: Response) => {
+      const file = req.file;
+      if (!file) return res.status(400).json({ message: "cover image file is required" });
+      const owner = await storage.isOwner(req.params.id, userId(req));
+      if (!owner) {
+        fs.unlink(file.path, () => {});
+        return res.status(403).json({ message: "Not your playlist" });
+      }
+      const coverUrl = `/uploads/covers/${file.filename}`;
+      await storage.updatePlaylistCover(req.params.id, userId(req), coverUrl);
+      res.json({ success: true, coverUrl });
+    }
+  );
 
   // ── Behavior Logging ─────────────────────────────────────────────────────
   app.post("/api/behavior", async (req: Request, res: Response) => {
