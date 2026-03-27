@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { rankSongsForUser } from "./ranking";
-import { insertMomentSchema, insertBehaviorLogSchema, insertSongSchema } from "@shared/schema";
+import { insertMomentSchema, insertBehaviorLogSchema, insertSongSchema, insertSongCommentSchema } from "@shared/schema";
 import {
   evaluateSongDistribution,
   computeMetrics,
@@ -396,6 +396,36 @@ export async function registerRoutes(
   app.post("/api/moments/:id/comment", async (req: Request, res: Response) => {
     await storage.commentMoment(req.params.id);
     res.json({ success: true });
+  });
+
+  // ── Unified Comments ──────────────────────────────────────────────────────
+  app.post("/api/comments", async (req: Request, res: Response) => {
+    const { content, songId, momentId } = req.body;
+    if (!content || (!songId && !momentId)) {
+      return res.status(400).json({ message: "content and songId or momentId are required" });
+    }
+    const result = insertSongCommentSchema.safeParse({
+      userId: userId(req),
+      content,
+      songId: songId ?? null,
+      momentId: momentId ?? null,
+    });
+    if (!result.success) return res.status(400).json({ message: result.error.message });
+    const comment = await storage.createComment(result.data);
+    res.status(201).json(comment);
+  });
+
+  app.get("/api/comments", async (req: Request, res: Response) => {
+    const { songId, momentId } = req.query as { songId?: string; momentId?: string };
+    if (songId) {
+      const comments = await storage.getCommentsBySong(songId);
+      return res.json(comments);
+    }
+    if (momentId) {
+      const comments = await storage.getCommentsByMoment(momentId);
+      return res.json(comments);
+    }
+    res.status(400).json({ message: "songId or momentId query param required" });
   });
 
   // ── Behavior Logging ─────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Heart, MessageCircle, Share2, Bookmark, Plus, Check, Play, Pause, Disc3, Music2, Quote, RotateCcw, CheckCircle2, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareQuote, TrendingUp, X, UserCheck, UserPlus, Loader2, Sparkles } from "lucide-react";
-import { ApiSong, ApiMoment, ApiUser, api } from "@/lib/api";
+import { ApiSong, ApiMoment, ApiUser, ApiComment, api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { trackListenBehavior } from "@/lib/tracking";
 import { recordSessionPlay } from "@/lib/session";
@@ -82,12 +83,31 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
     staleTime: 60_000,
   });
 
+  // Auth (for comment attribution)
+  const { state: authState } = useAuth();
+  const currentUser = authState.status === "authenticated" ? authState.user : null;
+
   // Share to moment & comments state
   const [showShareModal, setShowShareModal] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [newComment, setNewComment] = useState("");
-  const [localComments, setLocalComments] = useState<{ id: number; text: string }[]>([]);
-  const [localCommentCount, setLocalCommentCount] = useState<number | null>(null);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [optimisticComments, setOptimisticComments] = useState<ApiComment[]>([]);
+
+  // The real base song ID (strip ranking/pool suffixes)
+  const baseSongId = song.id.split("-seg-")[0].split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+
+  // Fetch comments from DB when modal is open
+  const { data: dbComments = [], refetch: refetchComments } = useQuery({
+    queryKey: ["comments", "song", baseSongId],
+    queryFn: () => api.getComments({ songId: baseSongId }),
+    enabled: showCommentsModal,
+    staleTime: 30_000,
+  });
+
+  // Live comment count = DB count + any optimistic ones not yet reflected
+  const totalCommentCount = dbComments.length + optimisticComments.length || song.comments;
+
   // Moment creation
   const [momentCaption, setMomentCaption]     = useState("");
   const [momentLyricIdx, setMomentLyricIdx]   = useState(0);
@@ -348,7 +368,51 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
 
   const handleCommentClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setOptimisticComments([]);
     setShowCommentsModal(true);
+  };
+
+  const handleCommentSubmit = async () => {
+    const text = newComment.trim();
+    if (!text || isSubmittingComment) return;
+    setNewComment("");
+    setIsSubmittingComment(true);
+
+    // Optimistic update
+    const tempId = `opt-${Date.now()}`;
+    const optimistic: ApiComment = {
+      id: tempId,
+      userId: currentUser?.id ?? "me",
+      songId: baseSongId,
+      momentId: null,
+      content: text,
+      createdAt: new Date().toISOString(),
+      user: {
+        id: currentUser?.id ?? "me",
+        username: currentUser?.username ?? "you",
+        displayName: currentUser?.displayName ?? "You",
+        avatarUrl: currentUser?.avatarUrl ?? "https://i.pravatar.cc/150?u=me",
+        bio: "",
+        followers: 0,
+        following: 0,
+        isArtist: false,
+      },
+    };
+    setOptimisticComments(prev => [optimistic, ...prev]);
+
+    try {
+      await api.createComment({ content: text, songId: baseSongId });
+      // Remove optimistic + refresh from server
+      setOptimisticComments([]);
+      refetchComments();
+    } catch {
+      // Rollback
+      setOptimisticComments(prev => prev.filter(c => c.id !== tempId));
+      setNewComment(text);
+      toast({ title: "Failed to post comment", variant: "destructive" });
+    } finally {
+      setIsSubmittingComment(false);
+    }
   };
 
   const restartSong = (e: React.MouseEvent) => {
@@ -627,7 +691,7 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
               <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors">
                 <MessageCircle size={26} className="text-white" />
               </div>
-              <span className="text-xs font-medium text-white/80 drop-shadow-md">{song.comments.toLocaleString()}</span>
+              <span className="text-xs font-medium text-white/80 drop-shadow-md">{totalCommentCount.toLocaleString()}</span>
             </button>
 
             <button
@@ -950,7 +1014,7 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
           >
             <div className="p-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-10 rounded-t-3xl">
               <h3 className="font-display font-bold text-white">
-                Comments <span className="text-white/50 text-sm font-normal ml-1">{(localCommentCount ?? song.comments).toLocaleString()}</span>
+                Comments <span className="text-white/50 text-sm font-normal ml-1">{totalCommentCount.toLocaleString()}</span>
               </h3>
               <button
                 onClick={() => setShowCommentsModal(false)}
@@ -961,73 +1025,21 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/20 overflow-hidden flex-shrink-0">
-                  <img src="https://i.pravatar.cc/150?u=a1" alt="User" className="w-full h-full object-cover" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-white/90">Alex</span>
-                    <span className="text-xs text-white/40">2h</span>
-                  </div>
-                  <p className="text-sm text-white/80">This beat drop is absolutely insane 🔥</p>
-                  <div className="flex items-center gap-4 mt-2">
-                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 124</button>
-                    <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/20 overflow-hidden flex-shrink-0">
-                  <img src="https://i.pravatar.cc/150?u=b2" alt="User" className="w-full h-full object-cover" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-white/90">Sarah</span>
-                    <span className="text-xs text-white/40">5h</span>
-                  </div>
-                  <p className="text-sm text-white/80">Been listening to this on repeat all day.</p>
-                  <div className="flex items-center gap-4 mt-2">
-                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 89</button>
-                    <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/20 overflow-hidden flex-shrink-0">
-                  <img src="https://i.pravatar.cc/150?u=c3" alt="User" className="w-full h-full object-cover" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-white/90">Mike</span>
-                    <span className="text-xs text-white/40">1d</span>
-                  </div>
-                  <p className="text-sm text-white/80">Does anyone know what synth they used for the lead?</p>
-                  <div className="flex items-center gap-4 mt-2">
-                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 42</button>
-                    <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
-                  </div>
-                </div>
-              </div>
-              {/* User's own comments */}
-              {localComments.map(c => (
-                <div key={c.id} className="flex gap-3 animate-in slide-in-from-bottom-2 duration-300">
-                  <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 ring-1 ring-primary/50">
-                    <img src="https://i.pravatar.cc/150?u=vibescroller" alt="You" className="w-full h-full object-cover" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-semibold text-white/90">vibescroller</span>
-                      <span className="text-xs text-white/40">just now</span>
-                    </div>
-                    <p className="text-sm text-white/90">{c.text}</p>
-                    <div className="flex items-center gap-4 mt-2">
-                      <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 0</button>
-                      <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
-                    </div>
-                  </div>
-                </div>
+              {/* Optimistic (just posted) comments */}
+              {optimisticComments.map(c => (
+                <CommentRow key={c.id} comment={c} isOptimistic />
               ))}
+              {/* DB comments (newest first) */}
+              {dbComments.map(c => (
+                <CommentRow key={c.id} comment={c} />
+              ))}
+              {/* Empty state */}
+              {dbComments.length === 0 && optimisticComments.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-white/30">
+                  <MessageCircle size={40} strokeWidth={1.2} className="mb-3 opacity-50" />
+                  <p className="text-sm">No comments yet. Be the first!</p>
+                </div>
+              )}
             </div>
 
             <div className="p-4 border-t border-white/10 bg-background sticky bottom-0">
@@ -1036,36 +1048,59 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                   type="text"
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && newComment.trim()) {
-                      setLocalComments(prev => [...prev, { id: Date.now(), text: newComment.trim() }]);
-                      setLocalCommentCount(c => (c ?? song.comments) + 1);
-                      setNewComment("");
-                    }
-                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleCommentSubmit(); }}
                   placeholder="Add a comment..."
                   className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-primary text-white pr-10 transition-colors"
                   data-testid="input-comment-feed"
                   autoFocus
                 />
                 <button
-                  disabled={!newComment.trim()}
-                  onClick={() => {
-                    if (!newComment.trim()) return;
-                    setLocalComments(prev => [...prev, { id: Date.now(), text: newComment.trim() }]);
-                    setLocalCommentCount(c => (c ?? song.comments) + 1);
-                    setNewComment("");
-                  }}
+                  disabled={!newComment.trim() || isSubmittingComment}
+                  onClick={handleCommentSubmit}
                   className="absolute right-2 p-1.5 rounded-full bg-primary text-primary-foreground disabled:opacity-50 disabled:bg-white/10 disabled:text-white/30 transition-all"
                   data-testid="button-submit-comment-feed"
                 >
-                  <Plus size={16} />
+                  {isSubmittingComment ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60)  return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60)  return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24)  return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7)   return `${d}d`;
+  return `${Math.floor(d / 7)}w`;
+}
+
+function CommentRow({ comment, isOptimistic = false }: { comment: ApiComment; isOptimistic?: boolean }) {
+  return (
+    <div className={cn("flex gap-3", isOptimistic && "opacity-70 animate-in slide-in-from-bottom-2 duration-300")}>
+      <div className={cn("w-8 h-8 rounded-full overflow-hidden flex-shrink-0", isOptimistic && "ring-1 ring-primary/50")}>
+        <img
+          src={comment.user.avatarUrl || `https://i.pravatar.cc/150?u=${comment.user.username}`}
+          alt={comment.user.displayName}
+          className="w-full h-full object-cover"
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-sm font-semibold text-white/90 truncate">{comment.user.displayName || comment.user.username}</span>
+          <span className="text-xs text-white/40 shrink-0">{isOptimistic ? "just now" : timeAgo(comment.createdAt)}</span>
+        </div>
+        <p className="text-sm text-white/80 break-words">{comment.content}</p>
+      </div>
     </div>
   );
 }

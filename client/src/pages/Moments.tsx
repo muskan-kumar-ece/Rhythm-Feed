@@ -1,23 +1,44 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, MessageCircle, PlayCircle, MoreHorizontal, Plus, Quote, TrendingUp, Disc3, Flame, Music2 } from "lucide-react";
-import { ApiMoment, ApiSong, api } from "@/lib/api";
+import { Heart, MessageCircle, PlayCircle, MoreHorizontal, Plus, Quote, TrendingUp, Disc3, Flame, Music2, Loader2 } from "lucide-react";
+import { ApiMoment, ApiSong, ApiComment, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import RythamLogo from "@/components/RythamLogo";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
-interface LocalComment {
-  id: number;
-  text: string;
-  timestamp: string;
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60)  return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60)  return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24)  return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7)   return `${d}d`;
+  return `${Math.floor(d / 7)}w`;
 }
 
 export default function Moments() {
+  const { state: authState } = useAuth();
+  const { toast } = useToast();
+  const currentUser = authState.status === "authenticated" ? authState.user : null;
+
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [activeMoment, setActiveMoment]           = useState<ApiMoment | null>(null);
   const [newComment, setNewComment]               = useState("");
   const [activeSection, setActiveSection]         = useState<"forYou" | "trending">("forYou");
-  const [localComments, setLocalComments]         = useState<LocalComment[]>([]);
-  const [commentCounts, setCommentCounts]         = useState<Record<string, number>>({});
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [optimisticComments, setOptimisticComments]   = useState<ApiComment[]>([]);
+
+  // Fetch DB comments for the active moment when modal is open
+  const { data: dbComments = [], refetch: refetchComments } = useQuery({
+    queryKey: ["comments", "moment", activeMoment?.id],
+    queryFn: () => api.getComments({ momentId: activeMoment!.id }),
+    enabled: showCommentsModal && !!activeMoment,
+    staleTime: 30_000,
+  });
 
   const { data: moments, isLoading } = useQuery({
     queryKey: ["moments"],
@@ -47,22 +68,49 @@ export default function Moments() {
 
   const handleCommentClick = (moment: ApiMoment) => {
     setActiveMoment(moment);
-    setLocalComments([]);
+    setOptimisticComments([]);
     setNewComment("");
     setShowCommentsModal(true);
   };
 
-  const handleSubmitComment = () => {
+  const handleSubmitComment = async () => {
     const text = newComment.trim();
-    if (!text || !activeMoment) return;
-    const comment: LocalComment = { id: Date.now(), text, timestamp: "just now" };
-    setLocalComments(prev => [...prev, comment]);
-    setCommentCounts(prev => ({
-      ...prev,
-      [activeMoment.id]: (prev[activeMoment.id] ?? activeMoment.comments) + 1,
-    }));
+    if (!text || !activeMoment || isSubmittingComment) return;
     setNewComment("");
-    api.commentMoment(activeMoment.id).catch(() => {});
+    setIsSubmittingComment(true);
+
+    const tempId = `opt-${Date.now()}`;
+    const optimistic: ApiComment = {
+      id: tempId,
+      userId: currentUser?.id ?? "me",
+      songId: null,
+      momentId: activeMoment.id,
+      content: text,
+      createdAt: new Date().toISOString(),
+      user: {
+        id: currentUser?.id ?? "me",
+        username: currentUser?.username ?? "you",
+        displayName: currentUser?.displayName ?? "You",
+        avatarUrl: currentUser?.avatarUrl ?? "https://i.pravatar.cc/150?u=me",
+        bio: "",
+        followers: 0,
+        following: 0,
+        isArtist: false,
+      },
+    };
+    setOptimisticComments(prev => [optimistic, ...prev]);
+
+    try {
+      await api.createComment({ content: text, momentId: activeMoment.id });
+      setOptimisticComments([]);
+      refetchComments();
+    } catch {
+      setOptimisticComments(prev => prev.filter(c => c.id !== tempId));
+      setNewComment(text);
+      toast({ title: "Failed to post comment", variant: "destructive" });
+    } finally {
+      setIsSubmittingComment(false);
+    }
   };
 
   return (
@@ -203,7 +251,7 @@ export default function Moments() {
           >
             <div className="p-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-10 rounded-t-3xl">
               <h3 className="font-display font-bold text-white">
-                Comments <span className="text-white/50 text-sm font-normal ml-1">{(commentCounts[activeMoment.id] ?? activeMoment.comments).toLocaleString()}</span>
+                Comments <span className="text-white/50 text-sm font-normal ml-1">{(dbComments.length + optimisticComments.length || activeMoment.comments).toLocaleString()}</span>
               </h3>
               <button onClick={() => setShowCommentsModal(false)} className="p-2 rounded-full hover:bg-white/10 text-white/70">
                 <Plus className="rotate-45" size={20} />
@@ -211,52 +259,39 @@ export default function Moments() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-              {/* Seed comments */}
-              <div className="flex gap-3">
-                <img src="https://i.pravatar.cc/150?u=u1" alt="User" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-white/90">User123</span>
-                    <span className="text-xs text-white/40">1h</span>
-                  </div>
-                  <p className="text-sm text-white/80">Such a vibe ✨</p>
-                  <div className="flex items-center gap-4 mt-2">
-                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 12</button>
-                    <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <img src="https://i.pravatar.cc/150?u=u2" alt="User" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-white/90">MusicLover</span>
-                    <span className="text-xs text-white/40">3h</span>
-                  </div>
-                  <p className="text-sm text-white/80">I was literally just listening to this!</p>
-                  <div className="flex items-center gap-4 mt-2">
-                    <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 8</button>
-                    <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
-                  </div>
-                </div>
-              </div>
-              {/* Optimistically added comments */}
-              {localComments.map(c => (
-                <div key={c.id} className="flex gap-3 animate-in slide-in-from-bottom-2 duration-300">
-                  <img src="https://i.pravatar.cc/150?u=vibescroller" alt="You" className="w-8 h-8 rounded-full object-cover flex-shrink-0 ring-1 ring-primary/50" />
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-semibold text-white/90">vibescroller</span>
-                      <span className="text-xs text-white/40">{c.timestamp}</span>
+              {/* Optimistic (just posted) comments */}
+              {optimisticComments.map(c => (
+                <div key={c.id} className="flex gap-3 opacity-70 animate-in slide-in-from-bottom-2 duration-300">
+                  <img src={c.user.avatarUrl || `https://i.pravatar.cc/150?u=${c.user.username}`} alt={c.user.displayName} className="w-8 h-8 rounded-full object-cover flex-shrink-0 ring-1 ring-primary/50" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-sm font-semibold text-white/90 truncate">{c.user.displayName || c.user.username}</span>
+                      <span className="text-xs text-white/40 shrink-0">just now</span>
                     </div>
-                    <p className="text-sm text-white/90">{c.text}</p>
-                    <div className="flex items-center gap-4 mt-2">
-                      <button className="text-xs text-white/50 hover:text-white/80 flex items-center gap-1"><Heart size={12} /> 0</button>
-                      <button className="text-xs text-white/50 hover:text-white/80">Reply</button>
-                    </div>
+                    <p className="text-sm text-white/80 break-words">{c.content}</p>
                   </div>
                 </div>
               ))}
+              {/* DB comments (newest first) */}
+              {dbComments.map(c => (
+                <div key={c.id} className="flex gap-3">
+                  <img src={c.user.avatarUrl || `https://i.pravatar.cc/150?u=${c.user.username}`} alt={c.user.displayName} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-sm font-semibold text-white/90 truncate">{c.user.displayName || c.user.username}</span>
+                      <span className="text-xs text-white/40 shrink-0">{timeAgo(c.createdAt)}</span>
+                    </div>
+                    <p className="text-sm text-white/80 break-words">{c.content}</p>
+                  </div>
+                </div>
+              ))}
+              {/* Empty state */}
+              {dbComments.length === 0 && optimisticComments.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-white/30">
+                  <MessageCircle size={40} strokeWidth={1.2} className="mb-3 opacity-50" />
+                  <p className="text-sm">No comments yet. Be the first!</p>
+                </div>
+              )}
             </div>
 
             <div className="p-4 border-t border-white/10 bg-background sticky bottom-0">
@@ -273,11 +308,11 @@ export default function Moments() {
                 />
                 <button
                   data-testid="button-submit-comment"
-                  disabled={!newComment.trim()}
+                  disabled={!newComment.trim() || isSubmittingComment}
                   onClick={handleSubmitComment}
                   className="absolute right-2 p-1.5 rounded-full bg-primary text-white disabled:opacity-30 transition-opacity"
                 >
-                  <Plus size={16} />
+                  {isSubmittingComment ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                 </button>
               </div>
             </div>

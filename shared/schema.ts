@@ -156,12 +156,22 @@ export const artistRequests = pgTable("artist_requests", {
   reviewedAt: timestamp("reviewed_at"),
 });
 
+export const songComments = pgTable("song_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  songId: varchar("song_id").references(() => songs.id),
+  momentId: varchar("moment_id").references(() => moments.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertSongSchema = createInsertSchema(songs).omit({ id: true, createdAt: true });
 export const insertMomentSchema = createInsertSchema(moments).omit({ id: true, createdAt: true });
 export const insertBehaviorLogSchema = createInsertSchema(behaviorLogs).omit({ id: true, createdAt: true });
 export const insertSpotlightSchema = createInsertSchema(spotlights).omit({ id: true, createdAt: true });
 export const insertArtistRequestSchema = createInsertSchema(artistRequests).omit({ id: true, createdAt: true });
+export const insertSongCommentSchema = createInsertSchema(songComments).omit({ id: true, createdAt: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -180,3 +190,6 @@ export type BehaviorLog = typeof behaviorLogs.$inferSelect;
 
 export type InsertArtistRequest = z.infer<typeof insertArtistRequestSchema>;
 export type ArtistRequest = typeof artistRequests.$inferSelect;
+
+export type InsertSongComment = z.infer<typeof insertSongCommentSchema>;
+export type SongComment = typeof songComments.$inferSelect;

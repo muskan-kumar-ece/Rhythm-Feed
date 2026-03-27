@@ -155,6 +155,16 @@ export type ApiSpotlight = {
   createdAt: string;
 };
 
+export type ApiComment = {
+  id: string;
+  userId: string;
+  songId: string | null;
+  momentId: string | null;
+  content: string;
+  createdAt: string;
+  user: ApiUser;
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     credentials: "include",
@@ -406,4 +416,14 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ role }),
     }),
+
+  // Comments
+  getComments: (params: { songId?: string; momentId?: string }) => {
+    const qs = new URLSearchParams();
+    if (params.songId)   qs.set("songId",   params.songId);
+    if (params.momentId) qs.set("momentId", params.momentId);
+    return request<ApiComment[]>(`/api/comments?${qs.toString()}`);
+  },
+  createComment: (data: { content: string; songId?: string; momentId?: string }) =>
+    request<ApiComment>("/api/comments", { method: "POST", body: JSON.stringify(data) }),
 };

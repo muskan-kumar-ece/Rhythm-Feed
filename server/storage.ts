@@ -3,13 +3,14 @@ import { eq, desc, and, ilike, sql, gte, ne } from "drizzle-orm";
 import pg from "pg";
 import {
   users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes, artistFollows,
-  spotlights, spotlightLikes, artistRequests,
+  spotlights, spotlightLikes, artistRequests, songComments,
   type User, type InsertUser,
   type Song, type InsertSong,
   type Moment, type InsertMoment,
   type BehaviorLog, type InsertBehaviorLog,
   type Spotlight, type InsertSpotlight,
   type ArtistRequest,
+  type InsertSongComment, type SongComment,
 } from "@shared/schema";
 import type { DistributionPhase } from "./discovery";
 
@@ -132,6 +133,11 @@ export interface IStorage {
   getPendingArtistRequests(): Promise<(ArtistRequest & { user: User })[]>;
   getAllArtistRequests(status?: string): Promise<(ArtistRequest & { user: User })[]>;
   updateArtistRequest(id: string, status: "approved" | "rejected", adminNote?: string): Promise<ArtistRequest | undefined>;
+
+  // Comments
+  createComment(data: InsertSongComment): Promise<SongComment & { user: User }>;
+  getCommentsBySong(songId: string): Promise<(SongComment & { user: User })[]>;
+  getCommentsByMoment(momentId: string): Promise<(SongComment & { user: User })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -837,6 +843,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(artistRequests.id, id))
       .returning();
     return updated;
+  }
+
+  async createComment(data: InsertSongComment): Promise<SongComment & { user: User }> {
+    const [comment] = await db.insert(songComments).values(data).returning();
+    // Bump the song or moment comment counter
+    if (data.songId) {
+      await db.update(songs).set({ comments: sql`${songs.comments} + 1` }).where(eq(songs.id, data.songId));
+    }
+    if (data.momentId) {
+      await db.update(moments).set({ comments: sql`${moments.comments} + 1` }).where(eq(moments.id, data.momentId));
+    }
+    const user = await this.getUser(data.userId);
+    return { ...comment, user: user! };
+  }
+
+  async getCommentsBySong(songId: string): Promise<(SongComment & { user: User })[]> {
+    const rows = await db
+      .select({ comment: songComments, user: users })
+      .from(songComments)
+      .innerJoin(users, eq(songComments.userId, users.id))
+      .where(eq(songComments.songId, songId))
+      .orderBy(desc(songComments.createdAt));
+    return rows.map(r => ({ ...r.comment, user: r.user }));
+  }
+
+  async getCommentsByMoment(momentId: string): Promise<(SongComment & { user: User })[]> {
+    const rows = await db
+      .select({ comment: songComments, user: users })
+      .from(songComments)
+      .innerJoin(users, eq(songComments.userId, users.id))
+      .where(eq(songComments.momentId, momentId))
+      .orderBy(desc(songComments.createdAt));
+    return rows.map(r => ({ ...r.comment, user: r.user }));
   }
 }
 
