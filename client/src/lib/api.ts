@@ -430,6 +430,10 @@ export const api = {
       body: JSON.stringify({ role }),
     }),
 
+  // Individual resource fetchers (for deep-link pages)
+  getSong: (id: string) => request<ApiSong>(`/api/songs/${id}`),
+  getMoment: (id: string) => request<ApiMoment>(`/api/moments/${id}`),
+
   // Comments
   getComments: (params: { songId?: string; momentId?: string }) => {
     const qs = new URLSearchParams();

@@ -19,6 +19,8 @@ import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import Settings from "@/pages/Settings";
 import PlaylistPage from "@/pages/PlaylistPage";
+import SongPage from "@/pages/SongPage";
+import MomentPage from "@/pages/MomentPage";
 import Navigation from "@/components/Navigation";
 
 const AUTH_ROUTES = ["/login", "/signup"];
@@ -43,6 +45,8 @@ function AppRoutes() {
         <Route path="/settings" component={Settings} />
         <Route path="/spotlight" component={Spotlight} />
         <Route path="/playlist/:id" component={PlaylistPage} />
+        <Route path="/song/:id" component={SongPage} />
+        <Route path="/moment/:id" component={MomentPage} />
 
         {/* Artist-only routes */}
         <Route path="/artist/:tab?">

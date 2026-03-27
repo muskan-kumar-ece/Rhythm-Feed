@@ -1,0 +1,147 @@
+Implement a real sharing system with deep links and viral loop mechanics.
+
+---
+
+🎯 PROBLEM:
+
+- Share button is not functional or only UI
+- No real links generated
+- No way to open shared content
+- No tracking of shares
+
+---
+
+🛠️ STEP 1: SHAREABLE LINKS FORMAT
+
+Define routes:
+
+- /song/:id
+- /moment/:id
+- /playlist/:id
+
+These should open directly in app.
+
+---
+
+🛠️ STEP 2: BACKEND SUPPORT
+
+Ensure APIs exist:
+
+GET /api/songs/:id
+GET /api/moments/:id
+GET /api/playlists/:id
+
+Return full data needed to render page.
+
+---
+
+🛠️ STEP 3: FRONTEND ROUTING
+
+Using React Router:
+
+- create pages:
+  SongPage.tsx
+  MomentPage.tsx
+  PlaylistPage.tsx
+
+Each page:
+- fetch data by ID
+- render full view
+- allow play/share/interact
+
+---
+
+🛠️ STEP 4: SHARE BUTTON FUNCTIONALITY
+
+In SongCard, Moment, Playlist:
+
+On click:
+- generate URL:
+  window.location.origin + "/song/" + song.id
+
+Use:
+
+navigator.share (mobile)
+fallback:
+copy to clipboard
+
+---
+
+🛠️ STEP 5: COPY LINK FALLBACK
+
+If navigator.share not supported:
+
+- copy link
+- show toast:
+  "Link copied 🔗"
+
+---
+
+🛠️ STEP 6: OPENING SHARED LINKS
+
+When user opens:
+
+/song/:id
+
+→ app should:
+- load song
+- auto-play (optional)
+- show UI
+
+---
+
+🛠️ STEP 7: VIRAL LOOP BOOST
+
+After share:
+
+- show UI:
+  "Shared successfully 🚀"
+
+Optional:
+- show "Invite friends" popup
+
+---
+
+🛠️ STEP 8: TRACK SHARES (OPTIONAL BUT POWERFUL)
+
+Add field:
+
+songs:
+- shareCount
+
+Increment on share API call.
+
+---
+
+🛠️ STEP 9: UI IMPROVEMENT
+
+Share modal:
+
+Options:
+- WhatsApp
+- Copy link
+- Instagram (optional)
+- System share
+
+---
+
+🛠️ STEP 10: ERROR HANDLING
+
+- if copy fails → show error toast
+- if route fails → show fallback UI
+
+---
+
+📊 TEST CASES:
+
+1. Click share → link generated
+2. Open link in new tab → correct page loads
+3. Copy link → works
+4. Mobile share → opens system share
+5. Share count increases (if implemented)
+
+---
+
+🎯 GOAL:
+
+Make sharing real, seamless, and capable of bringing new users into the app.

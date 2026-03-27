@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, MessageCircle, PlayCircle, MoreHorizontal, Plus, Quote, TrendingUp, Disc3, Flame, Music2, Loader2 } from "lucide-react";
+import { Heart, MessageCircle, PlayCircle, MoreHorizontal, Plus, Quote, TrendingUp, Disc3, Flame, Music2, Loader2, Share2 } from "lucide-react";
 import { ApiMoment, ApiSong, ApiComment, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import RythamLogo from "@/components/RythamLogo";
@@ -373,6 +373,7 @@ function MomentCard({
 }) {
   const [isLiked, setIsLiked]     = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const { toast } = useToast();
   const engagementScore = moment.likes * 2 + moment.comments;
 
   const handleLike = () => {
@@ -512,6 +513,27 @@ function MomentCard({
             <span className="text-xs font-bold text-white/70">{moment.comments}</span>
           </button>
         </div>
+
+        {/* Share moment link */}
+        <button
+          data-testid={`button-share-moment-${moment.id}`}
+          onClick={() => {
+            const url = `${window.location.origin}/moment/${moment.id}`;
+            const text = `"${moment.lyricLine}" — ${moment.song.title} on Rytham`;
+            if (navigator.share) {
+              navigator.share({ title: "Rytham Moment", text, url }).catch(() => {});
+            } else {
+              navigator.clipboard.writeText(url)
+                .then(() => toast({ description: "Link copied! 🔗" }))
+                .catch(() => toast({ description: "Couldn't copy link", variant: "destructive" }));
+            }
+          }}
+          className="flex items-center gap-2 group/btn"
+        >
+          <div className="p-1.5 rounded-full group-hover/btn:bg-white/5 transition-colors">
+            <Share2 size={18} className="text-white/50 group-hover/btn:scale-110 transition-transform" />
+          </div>
+        </button>
       </div>
     </div>
   );

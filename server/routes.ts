@@ -378,6 +378,12 @@ export async function registerRoutes(
     res.status(201).json(moment);
   });
 
+  app.get("/api/moments/:id", async (req: Request, res: Response) => {
+    const moment = await storage.getMoment(req.params.id);
+    if (!moment) return res.status(404).json({ message: "Moment not found" });
+    res.json(moment);
+  });
+
   app.post("/api/moments/:id/like", async (req: Request, res: Response) => {
     await storage.likeMoment(userId(req), req.params.id);
     res.json({ success: true });

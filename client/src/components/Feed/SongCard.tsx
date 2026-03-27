@@ -370,10 +370,31 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
     setIsPlaying(!isPlaying);
   };
 
-  const handleShareClick = (e: React.MouseEvent) => {
+  const handleMomentClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowShareModal(true);
-    setIsPlaying(false); // Pause while sharing
+    setIsPlaying(false);
+  };
+
+  const handleRealShareClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
+    const url = `${window.location.origin}/song/${baseSongId}`;
+    const title = song.title;
+    const text = `Listen to "${song.title}" by ${song.artist} on Rytham`;
+    haptic([10, 5, 20]);
+    if (navigator.share) {
+      navigator.share({ title, text, url })
+        .then(() => { api.shareSong(baseSongId).catch(() => {}); })
+        .catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url)
+        .then(() => {
+          toast({ description: "Link copied! 🔗" });
+          api.shareSong(baseSongId).catch(() => {});
+        })
+        .catch(() => toast({ description: "Couldn't copy link", variant: "destructive" }));
+    }
   };
 
   const handleCommentClick = (e: React.MouseEvent) => {
@@ -755,9 +776,26 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
               <span className="text-xs font-medium text-white/80 drop-shadow-md">Playlist</span>
             </button>
 
+            {/* Real Share button */}
             <button
-              onClick={(e) => { haptic([15, 10, 20]); setShareAnimating(true); setTimeout(() => setShareAnimating(false), 500); handleShareClick(e); }}
+              onClick={(e) => { setShareAnimating(true); setTimeout(() => setShareAnimating(false), 500); handleRealShareClick(e); }}
               className="flex flex-col items-center gap-1 group/btn active:scale-90 transition-transform"
+              data-testid="button-share-song"
+            >
+              <div className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center group-hover/btn:bg-white/10 transition-colors relative overflow-hidden">
+                {shareAnimating && (
+                  <div className="absolute inset-0 rounded-full bg-white/20" style={{ animation: "ripple-out 0.4s ease-out forwards" }} />
+                )}
+                <Share2 size={24} className="text-white" />
+              </div>
+              <span className="text-xs font-medium text-white/80 drop-shadow-md">Share</span>
+            </button>
+
+            {/* Create Moment button */}
+            <button
+              onClick={(e) => { haptic([15, 10, 20]); handleMomentClick(e); }}
+              className="flex flex-col items-center gap-1 group/btn active:scale-90 transition-transform"
+              data-testid="button-create-moment"
             >
               <div className="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md flex items-center justify-center border border-primary/50 group-hover/btn:bg-primary/40 transition-colors relative">
                 {shareAnimating && (

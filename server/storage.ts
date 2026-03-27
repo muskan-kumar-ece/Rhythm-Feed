@@ -69,6 +69,7 @@ export interface IStorage {
 
   // Moments
   getMoments(): Promise<(Moment & { user: User; song: Song })[]>;
+  getMoment(id: string): Promise<(Moment & { user: User; song: Song }) | undefined>;
   createMoment(moment: InsertMoment): Promise<Moment>;
   likeMoment(userId: string, momentId: string): Promise<void>;
   unlikeMoment(userId: string, momentId: string): Promise<void>;
@@ -401,6 +402,16 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(songs, eq(moments.songId, songs.id))
       .orderBy(desc(moments.createdAt));
     return rows.map(r => ({ ...r.moment, user: r.user, song: r.song }));
+  }
+
+  async getMoment(id: string): Promise<(Moment & { user: User; song: Song }) | undefined> {
+    const [row] = await db
+      .select({ moment: moments, user: users, song: songs })
+      .from(moments)
+      .innerJoin(users, eq(moments.userId, users.id))
+      .innerJoin(songs, eq(moments.songId, songs.id))
+      .where(eq(moments.id, id));
+    return row ? { ...row.moment, user: row.user, song: row.song } : undefined;
   }
 
   async createMoment(moment: InsertMoment): Promise<Moment> {
