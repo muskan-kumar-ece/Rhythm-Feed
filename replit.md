@@ -301,3 +301,11 @@ All charts and stats in `ArtistPortal.tsx` now use real data from the following 
 - **Tailwind v4**: CSS variables in `index.css` use raw `H S% L%` format inside `@theme inline`.
 - **`@keyframes equalizer`**: Defined in `client/index.html` `<style>` block for visualizer bars.
 - **Seed data**: Unsplash URLs used for cover images (not local assets) since data lives in PostgreSQL.
+
+## Changelog — March 27 2026
+
+### Production Polish — 4 Fixes
+1. **Settings persistence** — Already 100% complete (no changes needed; `preferences` JSONB column, GET/PATCH API, and Settings.tsx debounced save all confirmed working).
+2. **Follow system (userId-based)** — Added `user_follows` DB table (followerId/followingId, unique pair, cascade deletes); new storage methods; new API routes (`POST/DELETE /api/users/:id/follow`, `GET /api/users/:id/following`, `GET /api/users/:id/counts`); SongCard uses `song.uploadedBy` for follow with name-based fallback for anonymous songs; notifications fire on follow.
+3. **Spotlight video path fix** — Added `spotlightUpload` multer; video files routed to `uploads/video/`; URL correctly uses `/uploads/video/` vs `/uploads/audio/` (was hardcoded `audio` for both).
+4. **Redundant route removed** — `POST /api/moments/:id/comment` (counter-only, no comment storage) removed; real comments continue through `POST /api/comments`.

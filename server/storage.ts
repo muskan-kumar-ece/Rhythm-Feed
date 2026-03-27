@@ -3,6 +3,7 @@ import { eq, desc, and, ilike, sql, gte, ne } from "drizzle-orm";
 import pg from "pg";
 import {
   users, songs, moments, behaviorLogs, songLikes, songSaves, momentLikes, artistFollows,
+  userFollows,
   spotlights, spotlightLikes, artistRequests, songComments, playlists, playlistSongs,
   notifications,
   type User, type InsertUser,
@@ -110,11 +111,18 @@ export interface IStorage {
   getAdminDailyActivity(days?: number): Promise<{ date: string; plays: number; skips: number; completions: number; likes: number }[]>;
   getAdminRetentionData(): Promise<{ totalUsers: number; day1Retained: number; day7Retained: number }>;
 
-  // Artist follows
+  // Artist follows (name-based, kept for backward compat)
   followArtist(userId: string, artistName: string): Promise<void>;
   unfollowArtist(userId: string, artistName: string): Promise<void>;
   isFollowingArtist(userId: string, artistName: string): Promise<boolean>;
   getFollowedArtists(userId: string): Promise<string[]>;
+
+  // User follows (ID-based — primary follow system)
+  followUser(followerId: string, followingId: string): Promise<void>;
+  unfollowUser(followerId: string, followingId: string): Promise<void>;
+  isFollowingUser(followerId: string, followingId: string): Promise<boolean>;
+  getFollowerCount(userId: string): Promise<number>;
+  getFollowingCount(userId: string): Promise<number>;
 
   // User moments
   getUserMoments(userId: string): Promise<(Moment & { user: User; song: Song })[]>;
@@ -859,6 +867,51 @@ export class DatabaseStorage implements IStorage {
       .from(artistFollows)
       .where(eq(artistFollows.userId, userId));
     return rows.map(r => r.artistName);
+  }
+
+  // ── User follows (ID-based) ────────────────────────────────────────────────
+
+  async followUser(followerId: string, followingId: string): Promise<void> {
+    if (followerId === followingId) return;
+    await db.insert(userFollows).values({ followerId, followingId }).onConflictDoNothing();
+    // Increment counters atomically
+    await db.update(users).set({ following: sql`${users.following} + 1` }).where(eq(users.id, followerId));
+    await db.update(users).set({ followers: sql`${users.followers} + 1` }).where(eq(users.id, followingId));
+  }
+
+  async unfollowUser(followerId: string, followingId: string): Promise<void> {
+    const [deleted] = await db
+      .delete(userFollows)
+      .where(and(eq(userFollows.followerId, followerId), eq(userFollows.followingId, followingId)))
+      .returning();
+    if (deleted) {
+      await db.update(users).set({ following: sql`GREATEST(${users.following} - 1, 0)` }).where(eq(users.id, followerId));
+      await db.update(users).set({ followers: sql`GREATEST(${users.followers} - 1, 0)` }).where(eq(users.id, followingId));
+    }
+  }
+
+  async isFollowingUser(followerId: string, followingId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: userFollows.id })
+      .from(userFollows)
+      .where(and(eq(userFollows.followerId, followerId), eq(userFollows.followingId, followingId)));
+    return !!row;
+  }
+
+  async getFollowerCount(userId: string): Promise<number> {
+    const [row] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(userFollows)
+      .where(eq(userFollows.followingId, userId));
+    return row?.count ?? 0;
+  }
+
+  async getFollowingCount(userId: string): Promise<number> {
+    const [row] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(userFollows)
+      .where(eq(userFollows.followerId, userId));
+    return row?.count ?? 0;
   }
 
   // ── User moments ──────────────────────────────────────────────────────────

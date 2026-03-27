@@ -35,9 +35,10 @@ function userId(req: Request): string {
 
 const UPLOAD_ROOT   = path.resolve("uploads");
 const AUDIO_DIR     = path.join(UPLOAD_ROOT, "audio");
+const VIDEO_DIR     = path.join(UPLOAD_ROOT, "video");
 const COVER_DIR     = path.join(UPLOAD_ROOT, "covers");
 const PROFILE_DIR   = path.join(UPLOAD_ROOT, "profile");
-[AUDIO_DIR, COVER_DIR, PROFILE_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
+[AUDIO_DIR, VIDEO_DIR, COVER_DIR, PROFILE_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
 
 const MAX_AUDIO_MB    = 100;
 const MAX_IMG_MB      = 8;
@@ -88,6 +89,35 @@ const upload = multer({
         cb(new Error("Cover must be an image file"));
       }
     }
+  },
+});
+
+// Dedicated multer for spotlight uploads — routes video to VIDEO_DIR, audio to AUDIO_DIR, cover to COVER_DIR
+const spotlightUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, file, cb) => {
+      if (file.fieldname === "cover") return cb(null, COVER_DIR);
+      const isVideo = file.mimetype.startsWith("video/") ||
+                      /\.(mp4|mov|webm)$/i.test(file.originalname);
+      cb(null, isVideo ? VIDEO_DIR : AUDIO_DIR);
+    },
+    filename: (_req, file, cb) => {
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${unique}${path.extname(file.originalname)}`);
+    },
+  }),
+  limits: { fileSize: MAX_AUDIO_MB * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.fieldname === "cover") {
+      if (/^image\//.test(file.mimetype)) return cb(null, true);
+      return cb(new Error("Cover must be an image file"));
+    }
+    // media field — allow audio or video
+    if (/^(audio|video)\//.test(file.mimetype) ||
+        /\.(mp3|wav|flac|mp4|mov|webm)$/i.test(file.originalname)) {
+      return cb(null, true);
+    }
+    cb(new Error("Media must be audio (MP3/WAV/FLAC) or video (MP4/MOV/WEBM)"));
   },
 });
 
@@ -465,11 +495,6 @@ export async function registerRoutes(
   app.get("/api/moments/:id/liked", async (req: Request, res: Response) => {
     const liked = await storage.isMomentLiked(userId(req), req.params.id);
     res.json({ liked });
-  });
-
-  app.post("/api/moments/:id/comment", async (req: Request, res: Response) => {
-    await storage.commentMoment(req.params.id);
-    res.json({ success: true });
   });
 
   // ── Unified Comments ──────────────────────────────────────────────────────
@@ -1293,6 +1318,56 @@ export async function registerRoutes(
     res.json(artists);
   });
 
+  // ── User follows (ID-based) ───────────────────────────────────────────────
+
+  // GET /api/users/:id/following — is the current user following a specific user ID?
+  app.get("/api/users/:id/following", async (req: Request, res: Response) => {
+    const following = await storage.isFollowingUser(userId(req), req.params.id);
+    res.json({ following });
+  });
+
+  // POST /api/users/:id/follow — follow a user by their ID
+  app.post("/api/users/:id/follow", requireAuth, async (req: Request, res: Response) => {
+    const senderId     = userId(req);
+    const followingId  = req.params.id;
+    if (senderId === followingId) return res.status(400).json({ message: "Cannot follow yourself" });
+
+    await storage.followUser(senderId, followingId);
+
+    // Fire-and-forget notification
+    (async () => {
+      try {
+        const [sender, followed] = await Promise.all([
+          storage.getUser(senderId),
+          storage.getUser(followingId),
+        ]);
+        if (!sender || !followed) return;
+        await storage.createNotification({
+          userId: followed.id, type: "follow", senderId,
+          entityId: senderId, entityType: "profile",
+          message: `${sender.displayName} started following you`,
+        });
+      } catch {}
+    })();
+
+    res.json({ success: true, following: true });
+  });
+
+  // DELETE /api/users/:id/follow — unfollow a user by their ID
+  app.delete("/api/users/:id/follow", requireAuth, async (req: Request, res: Response) => {
+    await storage.unfollowUser(userId(req), req.params.id);
+    res.json({ success: true, following: false });
+  });
+
+  // GET /api/users/:id/follower-count — follower and following counts for a profile
+  app.get("/api/users/:id/counts", async (req: Request, res: Response) => {
+    const [followers, following] = await Promise.all([
+      storage.getFollowerCount(req.params.id),
+      storage.getFollowingCount(req.params.id),
+    ]);
+    res.json({ followers, following });
+  });
+
   // ── User moments ──────────────────────────────────────────────────────────
   app.get("/api/user/moments", async (req: Request, res: Response) => {
     const userMoments = await storage.getUserMoments(userId(req));
@@ -1349,7 +1424,7 @@ export async function registerRoutes(
   app.post(
     "/api/spotlights/upload",
     requireRole("artist", "admin"),
-    upload.fields([
+    spotlightUpload.fields([
       { name: "media", maxCount: 1 },
       { name: "cover", maxCount: 1 },
     ]),
@@ -1368,7 +1443,7 @@ export async function registerRoutes(
       }
 
       const isVideo   = /\.(mp4|mov|webm)$/i.test(mediaFile.originalname) || mediaFile.mimetype.startsWith("video/");
-      const mediaUrl  = `/uploads/${isVideo ? "audio" : "audio"}/${mediaFile.filename}`;
+      const mediaUrl  = `/uploads/${isVideo ? "video" : "audio"}/${mediaFile.filename}`;
       const coverUrl  = coverFile
         ? `/uploads/covers/${coverFile.filename}`
         : `https://i.pravatar.cc/400?u=${encodeURIComponent(artistName)}`;

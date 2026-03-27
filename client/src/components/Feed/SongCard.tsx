@@ -47,7 +47,12 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
     const baseSongId = song.id.split("-rank-")[0].split("-rapid-")[0].split("-discover")[0].split("-new")[0].split("-mood-")[0];
     api.isLiked(baseSongId).then(r => setIsLiked(r.liked)).catch(() => {});
     api.isSaved(baseSongId).then(r => setIsSaved(r.saved)).catch(() => {});
-    api.isFollowingArtist(song.artist).then(r => setIsFollowing(r.following)).catch(() => {});
+    // Prefer userId-based follow; fall back to name-based for legacy/anonymous songs
+    if (song.uploadedBy) {
+      api.isFollowingUser(song.uploadedBy).then(r => setIsFollowing(r.following)).catch(() => {});
+    } else {
+      api.isFollowingArtist(song.artist).then(r => setIsFollowing(r.following)).catch(() => {});
+    }
   }, [song.id]);
 
   const [currentLyricIndex, setCurrentLyricIndex] = useState(0);
@@ -584,11 +589,17 @@ export default function SongCard({ song, isActive, shouldPreload = false, onSess
                         if (newFollowing) {
                           setFollowAnimating(true);
                           setTimeout(() => setFollowAnimating(false), 600);
-                          api.followArtist(song.artist)
+                          const followAction = song.uploadedBy
+                            ? api.followUser(song.uploadedBy)
+                            : api.followArtist(song.artist);
+                          followAction
                             .then(() => toast({ description: `Following ${song.artist}` }))
                             .catch(() => { setIsFollowing(false); toast({ description: "Follow failed", variant: "destructive" }); });
                         } else {
-                          api.unfollowArtist(song.artist)
+                          const unfollowAction = song.uploadedBy
+                            ? api.unfollowUser(song.uploadedBy)
+                            : api.unfollowArtist(song.artist);
+                          unfollowAction
                             .then(() => toast({ description: `Unfollowed ${song.artist}` }))
                             .catch(() => { setIsFollowing(true); toast({ description: "Action failed", variant: "destructive" }); });
                         }

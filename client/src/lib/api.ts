@@ -411,7 +411,7 @@ export const api = {
   unlikeSpotlight: (id: string) => request<{ success: boolean; liked: boolean }>(`/api/spotlights/${id}/like`, { method: "DELETE" }),
   uploadSpotlight: (formData: FormData) => upload<{ spotlight: ApiSpotlight }>("/api/spotlights/upload", formData),
 
-  // Artist follows
+  // Artist follows (name-based, kept for backward compat)
   isFollowingArtist: (artistName: string) =>
     request<{ following: boolean }>(`/api/artists/followed?artistName=${encodeURIComponent(artistName)}`),
   followArtist: (artistName: string) =>
@@ -425,6 +425,16 @@ export const api = {
       body: JSON.stringify({ artistName }),
     }),
   getFollowedArtists: () => request<string[]>("/api/artists/following"),
+
+  // User follows (ID-based — primary system)
+  isFollowingUser: (userId: string) =>
+    request<{ following: boolean }>(`/api/users/${userId}/following`),
+  followUser: (userId: string) =>
+    request<{ success: boolean; following: boolean }>(`/api/users/${userId}/follow`, { method: "POST" }),
+  unfollowUser: (userId: string) =>
+    request<{ success: boolean; following: boolean }>(`/api/users/${userId}/follow`, { method: "DELETE" }),
+  getUserFollowCounts: (userId: string) =>
+    request<{ followers: number; following: number }>(`/api/users/${userId}/counts`),
 
   // User moments
   getUserMoments: () => request<ApiMoment[]>("/api/user/moments"),

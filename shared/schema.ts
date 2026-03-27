@@ -118,6 +118,14 @@ export const artistFollows = pgTable("artist_follows", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+// User-to-user follows — robust, ID-based (replaces name-based artistFollows for registered artists)
+export const userFollows = pgTable("user_follows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  followerId: varchar("follower_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  followingId: varchar("following_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 // Artist Spotlight Interviews
 export const spotlights = pgTable("spotlights", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
