@@ -4,11 +4,11 @@ export const modules: ModuleMap = {
   "./components/mockups/auth-screens/ForgotPassword.tsx": () => import("../components/mockups/auth-screens/ForgotPassword.tsx"),
   "./components/mockups/auth-screens/Login.tsx": () => import("../components/mockups/auth-screens/Login.tsx"),
   "./components/mockups/auth-screens/Signup.tsx": () => import("../components/mockups/auth-screens/Signup.tsx"),
-  "./components/mockups/core-screens/Feed.tsx": () => import("../components/mockups/core-screens/Feed.tsx"),
-  "./components/mockups/core-screens/Moments.tsx": () => import("../components/mockups/core-screens/Moments.tsx"),
-  "./components/mockups/core-screens/Onboarding.tsx": () => import("../components/mockups/core-screens/Onboarding.tsx"),
   "./components/mockups/portal-screens/AdminDashboard.tsx": () => import("../components/mockups/portal-screens/AdminDashboard.tsx"),
   "./components/mockups/portal-screens/ArtistPortal.tsx": () => import("../components/mockups/portal-screens/ArtistPortal.tsx"),
   "./components/mockups/portal-screens/Settings.tsx": () => import("../components/mockups/portal-screens/Settings.tsx"),
+  "./components/mockups/core-screens/Feed.tsx": () => import("../components/mockups/core-screens/Feed.tsx"),
+  "./components/mockups/core-screens/Moments.tsx": () => import("../components/mockups/core-screens/Moments.tsx"),
+  "./components/mockups/core-screens/Onboarding.tsx": () => import("../components/mockups/core-screens/Onboarding.tsx"),
   "./components/mockups/profile-screen/Profile.tsx": () => import("../components/mockups/profile-screen/Profile.tsx")
 };
