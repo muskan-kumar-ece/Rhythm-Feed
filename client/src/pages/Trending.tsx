@@ -112,17 +112,40 @@ function SectionHeader({ icon, title, color, lastUpdated }: {
   lastUpdated?: number;
 }) {
   return (
-    <div className={cn("px-4 py-3 flex items-center justify-between border-b border-white/5", color)}>
-      <div className="flex items-center gap-2">
+    <div className={cn("px-4 py-3 flex items-center justify-between border-b border-white/[0.06] rounded-t-xl", color)}>
+      <div className="flex items-center gap-2.5">
         {icon}
         <span className="text-sm font-bold text-white">{title}</span>
       </div>
       {lastUpdated && (
         <div className="flex items-center gap-1 text-[10px] text-white/30">
-          <Clock size={10} />
+          <Clock size={9} />
           <span>Updated {relativeTime(new Date(lastUpdated).toISOString())}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+function SectionSkeleton() {
+  return (
+    <div className="space-y-px">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-4 py-3">
+          <div className="w-6 shrink-0">
+            <div className="h-4 w-4 rounded skeleton ml-auto" />
+          </div>
+          <div className="w-12 h-12 rounded-xl skeleton shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 rounded-full skeleton w-3/4" />
+            <div className="h-2.5 rounded-full skeleton w-1/2" />
+          </div>
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <div className="h-2.5 w-12 rounded-full skeleton" />
+            <div className="h-2.5 w-8 rounded-full skeleton" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -205,19 +228,20 @@ export default function Trending() {
       <div className="flex-1 overflow-y-auto pb-20">
 
         {/* Section 1: Viral */}
-        <div className="mt-3">
+        <div className="mt-3 mx-3 rounded-2xl overflow-hidden bg-white/[0.03] border border-white/[0.07]">
           <SectionHeader
             icon={<Flame size={15} className="text-orange-400" />}
             title="🔥 Going Viral"
-            color="bg-orange-500/5"
+            color="bg-orange-500/[0.06]"
             lastUpdated={viralUpdated}
           />
           {viralLoading ? (
-            <div className="p-8 flex justify-center">
-              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
+            <SectionSkeleton />
           ) : filteredViral.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-white/30">No results</p>
+            <div className="px-4 py-8 text-center">
+              <Flame size={28} className="text-white/10 mx-auto mb-2" />
+              <p className="text-xs text-white/30">No viral songs yet</p>
+            </div>
           ) : (
             filteredViral.map((song, i) => (
               <SongRow
@@ -235,19 +259,20 @@ export default function Trending() {
         </div>
 
         {/* Section 2: Fastest Growing */}
-        <div className="mt-4">
+        <div className="mt-3 mx-3 rounded-2xl overflow-hidden bg-white/[0.03] border border-white/[0.07]">
           <SectionHeader
             icon={<ArrowUpRight size={15} className="text-green-400" />}
             title="📈 Fastest Growing"
-            color="bg-green-500/5"
+            color="bg-green-500/[0.06]"
             lastUpdated={fastestUpdated}
           />
           {fastestLoading ? (
-            <div className="p-8 flex justify-center">
-              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
+            <SectionSkeleton />
           ) : filteredFastest.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-white/30">No results</p>
+            <div className="px-4 py-8 text-center">
+              <ArrowUpRight size={28} className="text-white/10 mx-auto mb-2" />
+              <p className="text-xs text-white/30">No growth data yet</p>
+            </div>
           ) : (
             filteredFastest.map((song, i) => (
               <SongRow
@@ -283,21 +308,19 @@ export default function Trending() {
         </div>
 
         {/* Section 3: Trending in Moments */}
-        <div className="mt-4 mb-4">
+        <div className="mt-3 mx-3 mb-4 rounded-2xl overflow-hidden bg-white/[0.03] border border-white/[0.07]">
           <SectionHeader
             icon={<MessageSquareQuote size={15} className="text-purple-400" />}
             title="💬 Trending in Moments"
-            color="bg-purple-500/5"
+            color="bg-purple-500/[0.06]"
             lastUpdated={momentsUpdated}
           />
           {momentsLoading ? (
-            <div className="p-8 flex justify-center">
-              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
+            <SectionSkeleton />
           ) : filteredMoments.length === 0 ? (
-            <div className="px-4 py-8 text-center">
-              <MessageSquareQuote size={32} className="text-white/10 mx-auto mb-2" />
-              <p className="text-xs text-white/30">No songs have Moments yet</p>
+            <div className="px-4 py-10 text-center">
+              <MessageSquareQuote size={32} className="text-white/10 mx-auto mb-2.5" />
+              <p className="text-sm text-white/30 font-medium">No Moments yet</p>
               <p className="text-xs text-white/20 mt-1">Create Moments from the feed to see them here</p>
             </div>
           ) : (

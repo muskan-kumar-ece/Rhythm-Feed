@@ -290,22 +290,22 @@ export default function Feed() {
     <div className="relative h-[100dvh] w-full bg-black">
 
       {/* Top Mood Navigation */}
-      <div className="absolute top-0 left-0 right-0 z-50 pt-12 pb-4 px-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
-        <div className="flex items-center gap-6 text-lg font-display font-semibold justify-center pointer-events-auto overflow-x-auto no-scrollbar mask-image-fade-x pb-2">
+      <div className="absolute top-0 left-0 right-0 z-50 pt-10 pb-3 px-4 bg-gradient-to-b from-black/85 via-black/50 to-transparent pointer-events-none">
+        <div className="flex items-center gap-1 font-display font-semibold pointer-events-auto overflow-x-auto no-scrollbar mask-image-fade-x pb-1 px-2">
           {MOODS.map(mood => (
             <button
               key={mood}
               onClick={() => setSelectedMood(mood)}
               className={cn(
-                "whitespace-nowrap transition-all duration-300 relative",
+                "whitespace-nowrap transition-all duration-250 relative px-3 py-1.5 rounded-full text-sm",
                 selectedMood === mood
-                  ? "text-white scale-110 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
-                  : "text-white/40 hover:text-white/70"
+                  ? "text-white bg-white/15 backdrop-blur-md border border-white/20 shadow-[0_0_12px_rgba(255,255,255,0.15)]"
+                  : "text-white/45 hover:text-white/70 hover:bg-white/8"
               )}
             >
               {mood}
               {selectedMood === mood && (
-                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,1)]" />
+                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full shadow-[0_0_6px_2px_rgba(168,85,247,0.8)]" />
               )}
             </button>
           ))}

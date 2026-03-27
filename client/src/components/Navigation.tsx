@@ -57,61 +57,61 @@ export default function Navigation() {
         const isTapped = tapped === item.href;
 
         return (
-          <Link key={item.href} href={item.href}>
-            <a
-              data-testid={`nav-${item.label.toLowerCase()}`}
-              onClick={() => handleTap(item.href)}
-              className="flex flex-col items-center justify-center w-[20%] h-full gap-1 relative select-none"
-            >
-              {/* Active glow pill behind icon */}
-              {isActive && (
-                <div
-                  className="absolute top-2 w-10 h-8 rounded-full bg-primary/15 border border-primary/20"
-                  style={{ animation: "nav-glow 2.5s ease-in-out infinite" }}
-                />
-              )}
-
-              {/* Expanding ring on tap */}
-              {isTapped && (
-                <div
-                  className="absolute top-2 w-10 h-8 rounded-full border border-primary/60"
-                  style={{ animation: "glow-ring 0.4s ease-out forwards" }}
-                />
-              )}
-
-              <Icon
-                size={24}
-                strokeWidth={isActive ? 2.5 : 1.8}
-                className={cn(
-                  "relative z-10 transition-colors duration-200",
-                  isActive
-                    ? item.label === "Admin" ? "text-amber-400" : "text-primary"
-                    : "text-white/40"
-                )}
-                style={isTapped ? { animation: "nav-bounce 0.4s cubic-bezier(0.36,0.07,0.19,0.97)" } : undefined}
+          <Link
+            key={item.href}
+            href={item.href}
+            data-testid={`nav-${item.label.toLowerCase()}`}
+            onClick={() => handleTap(item.href)}
+            className="flex flex-col items-center justify-center w-[20%] h-full gap-1 relative select-none"
+          >
+            {/* Active glow pill behind icon */}
+            {isActive && (
+              <div
+                className="absolute top-2 w-10 h-8 rounded-full bg-primary/15 border border-primary/20"
+                style={{ animation: "nav-glow 2.5s ease-in-out infinite" }}
               />
+            )}
 
-              <span
-                className={cn(
-                  "text-[10px] font-medium tracking-wide relative z-10 transition-colors duration-200",
-                  isActive
-                    ? item.label === "Admin" ? "text-amber-400" : "text-primary"
-                    : "text-white/30"
-                )}
-              >
-                {item.label}
-              </span>
+            {/* Expanding ring on tap */}
+            {isTapped && (
+              <div
+                className="absolute top-2 w-10 h-8 rounded-full border border-primary/60"
+                style={{ animation: "glow-ring 0.4s ease-out forwards" }}
+              />
+            )}
 
-              {/* Active dot */}
-              {isActive && (
-                <div className={cn(
-                  "absolute bottom-1 w-1 h-1 rounded-full",
-                  item.label === "Admin"
-                    ? "bg-amber-400 shadow-[0_0_6px_2px_rgba(251,191,36,0.7)]"
-                    : "bg-primary shadow-[0_0_6px_2px_rgba(168,85,247,0.7)]"
-                )} />
+            <Icon
+              size={24}
+              strokeWidth={isActive ? 2.5 : 1.8}
+              className={cn(
+                "relative z-10 transition-colors duration-200",
+                isActive
+                  ? item.label === "Admin" ? "text-amber-400" : "text-primary"
+                  : "text-white/40"
               )}
-            </a>
+              style={isTapped ? { animation: "nav-bounce 0.4s cubic-bezier(0.36,0.07,0.19,0.97)" } : undefined}
+            />
+
+            <span
+              className={cn(
+                "text-[10px] font-medium tracking-wide relative z-10 transition-colors duration-200",
+                isActive
+                  ? item.label === "Admin" ? "text-amber-400" : "text-primary"
+                  : "text-white/30"
+              )}
+            >
+              {item.label}
+            </span>
+
+            {/* Active dot */}
+            {isActive && (
+              <div className={cn(
+                "absolute bottom-1 w-1 h-1 rounded-full",
+                item.label === "Admin"
+                  ? "bg-amber-400 shadow-[0_0_6px_2px_rgba(251,191,36,0.7)]"
+                  : "bg-primary shadow-[0_0_6px_2px_rgba(168,85,247,0.7)]"
+              )} />
+            )}
           </Link>
         );
       })}

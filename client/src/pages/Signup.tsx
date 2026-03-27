@@ -224,13 +224,7 @@ export default function Signup() {
             data-testid="btn-signup"
             type="submit"
             disabled={loading}
-            className={cn(
-              "w-full py-3.5 rounded-full font-bold text-sm text-white transition-all mt-2",
-              "bg-gradient-to-r from-violet-600 to-pink-600",
-              "hover:opacity-90 active:scale-[0.98]",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-              "flex items-center justify-center gap-2"
-            )}
+            className="btn-primary mt-2"
           >
             {loading ? <><Loader2 size={16} className="animate-spin" /> Creating account…</> : "Create Account"}
           </button>

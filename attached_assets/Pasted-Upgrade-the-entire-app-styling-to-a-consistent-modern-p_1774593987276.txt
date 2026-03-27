@@ -1,0 +1,185 @@
+Upgrade the entire app styling to a consistent, modern, premium UI.
+
+Act as a senior UI/UX designer and frontend engineer.
+
+---
+
+🎯 GOAL:
+Make the app visually polished, consistent, and production-level.
+
+---
+
+🎨 1. DESIGN SYSTEM (VERY IMPORTANT)
+
+Create a unified design system:
+
+COLORS:
+- primary: neon purple / blue gradient
+- background: deep dark (#0a0a0a / #0f0f0f)
+- surface: slightly lighter dark (#1a1a1a)
+- accent: glowing highlight color
+
+TEXT:
+- primary text: white
+- secondary: gray
+- muted: light gray
+
+BORDER RADIUS:
+- cards: rounded-xl (16px+)
+- buttons: rounded-lg
+
+SPACING:
+- consistent padding (8, 12, 16, 20, 24)
+
+---
+
+✨ 2. GLOBAL IMPROVEMENTS
+
+- remove inconsistent spacing
+- align all components properly
+- ensure equal margins everywhere
+- remove clutter
+- maintain visual hierarchy
+
+---
+
+📱 3. BUTTON STYLING
+
+ALL buttons should:
+- have consistent height
+- rounded corners
+- hover + active states
+- subtle scale animation on tap
+
+PRIMARY BUTTON:
+- gradient background
+- slight glow effect
+
+SECONDARY BUTTON:
+- outlined or soft background
+
+---
+
+🧊 4. CARDS & SURFACES
+
+- use glassmorphism (blur + transparency)
+- soft shadows
+- subtle border
+
+Example:
+- background: rgba(255,255,255,0.05)
+- backdrop-blur
+
+---
+
+🎧 5. MUSIC FEED UI
+
+- full-screen album cover
+- dark gradient overlay (for readability)
+- blurred background effect
+- smooth fade transitions
+
+---
+
+📊 6. TYPOGRAPHY IMPROVEMENT
+
+- clear font hierarchy:
+  - title: large, bold
+  - subtitle: medium
+  - meta: small, muted
+
+- avoid overcrowded text
+
+---
+
+⚡ 7. MICRO-INTERACTIONS
+
+- smooth hover and tap animations
+- scale: 0.95 on press
+- fade transitions between states
+- animated icons (like, save, follow)
+
+---
+
+🧭 8. NAVIGATION BAR
+
+- semi-transparent background
+- blur effect
+- glowing active tab indicator
+- icons + labels aligned
+
+---
+
+💬 9. MODALS & POPUPS
+
+- rounded corners
+- centered layout
+- smooth fade + scale animation
+- dimmed background
+
+---
+
+📉 10. REMOVE BAD UI
+
+Fix:
+- overlapping elements
+- buttons behind nav bar
+- inconsistent padding
+- misaligned icons/text
+
+---
+
+📦 11. LOADING STATES
+
+Replace spinners with:
+- skeleton loaders
+- shimmer effect
+- animated placeholders
+
+---
+
+📭 12. EMPTY STATES
+
+Add styled empty states:
+- icon + message
+- example:
+  "No songs yet — start exploring 🎧"
+
+---
+
+🌙 13. DARK MODE PERFECTION
+
+- no harsh whites
+- soft contrast
+- readable text
+- consistent dark palette
+
+---
+
+📱 14. RESPONSIVENESS
+
+- ensure proper layout on mobile
+- fix overflow issues
+- maintain spacing on all screen sizes
+
+---
+
+⚡ 15. PERFORMANCE
+
+- remove heavy styles causing lag
+- optimize animations
+- avoid unnecessary re-renders
+
+---
+
+📊 FINAL OUTPUT:
+
+- list all styling improvements made
+- confirm UI consistency across app
+- confirm no broken layouts remain
+
+---
+
+🎯 GOAL:
+
+Transform the app into a clean, modern, premium product that feels like a top-tier startup app.

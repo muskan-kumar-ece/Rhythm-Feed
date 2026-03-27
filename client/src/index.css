@@ -331,3 +331,117 @@ img { image-rendering: -webkit-optimize-contrast; }
 /* ─── Press/active scale ──────────────────────────────────────────────────── */
 .press-scale { transition: transform 80ms ease; }
 .press-scale:active { transform: scale(0.92); }
+
+/* ─── Primary button ──────────────────────────────────────────────────────── */
+.btn-primary {
+  @apply relative flex items-center justify-center gap-2;
+  @apply w-full py-3.5 rounded-full font-bold text-sm text-white;
+  @apply bg-gradient-to-r from-violet-600 to-pink-600;
+  @apply transition-all duration-150;
+  @apply hover:brightness-110 hover:shadow-[0_0_20px_rgba(168,85,247,0.4)];
+  @apply active:scale-[0.97] active:brightness-95;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none;
+}
+
+/* ─── Secondary button ────────────────────────────────────────────────────── */
+.btn-secondary {
+  @apply flex items-center justify-center gap-2;
+  @apply px-4 py-2.5 rounded-full font-semibold text-sm text-white/80;
+  @apply bg-white/8 border border-white/10;
+  @apply transition-all duration-150;
+  @apply hover:bg-white/12 hover:text-white hover:border-white/20;
+  @apply active:scale-[0.97];
+  @apply disabled:opacity-40 disabled:cursor-not-allowed;
+}
+
+/* ─── Consistent text input ───────────────────────────────────────────────── */
+.input-base {
+  @apply w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3;
+  @apply text-white text-sm placeholder:text-white/25;
+  @apply outline-none transition-all duration-200;
+  @apply focus:border-primary/60 focus:bg-white/8 focus:ring-1 focus:ring-primary/20;
+}
+
+/* ─── Interactive list card ───────────────────────────────────────────────── */
+.card-interactive {
+  @apply flex items-center gap-3 p-3 rounded-2xl;
+  @apply bg-white/[0.04] border border-white/[0.06];
+  @apply transition-all duration-150 cursor-pointer;
+  @apply hover:bg-white/[0.08] hover:border-white/[0.12];
+  @apply active:scale-[0.99];
+}
+
+/* ─── Section header label ────────────────────────────────────────────────── */
+.section-label {
+  @apply text-xs font-bold uppercase tracking-widest text-white/35;
+}
+
+/* ─── Tag / chip pill ─────────────────────────────────────────────────────── */
+.chip {
+  @apply inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold;
+  @apply bg-white/[0.06] border border-white/[0.10] text-white/70;
+  @apply transition-all duration-150;
+  @apply hover:bg-white/[0.12] hover:text-white hover:border-white/20 active:scale-95;
+}
+.chip-primary {
+  @apply inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold;
+  @apply bg-primary/15 border border-primary/25 text-primary;
+  @apply transition-all duration-150;
+  @apply hover:bg-primary/25 hover:border-primary/40 active:scale-95;
+}
+
+/* ─── Cover art thumbnail ─────────────────────────────────────────────────── */
+.thumb-md {
+  @apply w-12 h-12 rounded-xl overflow-hidden shrink-0 shadow-md;
+}
+.thumb-sm {
+  @apply w-10 h-10 rounded-lg overflow-hidden shrink-0 shadow-sm;
+}
+
+/* ─── Empty state ─────────────────────────────────────────────────────────── */
+.empty-state {
+  @apply flex flex-col items-center justify-center gap-3 py-16 text-center;
+}
+.empty-state-icon {
+  @apply w-14 h-14 rounded-full bg-white/[0.05] border border-white/[0.08] flex items-center justify-center mb-1;
+}
+
+/* ─── Skeleton rows (compose .skeleton in HTML with shape utilities) ──────── */
+.skeleton-row {
+  @apply flex items-center gap-3 px-4 py-3;
+}
+
+/* ─── Glow variants ───────────────────────────────────────────────────────── */
+.glow-primary {
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.35), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.glow-accent {
+  box-shadow: 0 0 20px rgba(236, 72, 153, 0.35), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── Gradient overlay (for image cards) ─────────────────────────────────── */
+.gradient-overlay-bottom {
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.85) 0%,
+    rgba(0, 0, 0, 0.4)  45%,
+    transparent         100%
+  );
+}
+.gradient-overlay-dark {
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.92) 0%,
+    rgba(0, 0, 0, 0.5)  50%,
+    rgba(0, 0, 0, 0.2)  100%
+  );
+}
+
+/* ─── Mood pill tab indicator ─────────────────────────────────────────────── */
+.mood-tab-active {
+  @apply text-white font-bold;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
+}
+.mood-tab-inactive {
+  @apply text-white/40 hover:text-white/65 transition-colors duration-200;
+}
